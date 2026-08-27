@@ -1,0 +1,57 @@
+name: Bug report
+description: Something masks incorrectly, errors unexpectedly, or behaves against the documentation.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        If the bug is that a secret survived masking, stop and file a
+        [private security advisory](https://github.com/icntswm/go-masker/security/advisories/new)
+        instead. Do not paste real credentials or production data anywhere in
+        this form.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: >-
+        The smallest program that shows the problem, using synthetic values.
+        A failing test or Example is ideal.
+      render: go
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: Output of `go version`.
+      placeholder: go version go1.23.12 linux/amd64
+    validations:
+      required: true
+
+  - type: input
+    id: library-version
+    attributes:
+      label: go-masker version
+      description: Tag or commit from `go list -m github.com/icntswm/go-masker`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Masker configuration
+      description: >-
+        The policy, rules, struct tags and options in use. Defaults are fine to
+        state as "DefaultPolicy, no options".
+    validations:
+      required: false

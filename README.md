@@ -314,7 +314,8 @@ make bench-matrix
 - [SECURITY.md](SECURITY.md) — vulnerability reporting and user expectations;
 - [THREAT_MODEL.md](THREAT_MODEL.md) — threat model and security boundaries;
 - [CHANGELOG.md](CHANGELOG.md) — unreleased and released changes;
-- [CONTRIBUTING.md](CONTRIBUTING.md) — development and pull request workflow.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development and pull request workflow;
+- [RELEASING.md](RELEASING.md) — tagging, the module proxy, and retractions.
 
 The package godoc contains runnable examples for construction, JSON,
 reflection, custom rules, struct tags, and HTTP adapters.

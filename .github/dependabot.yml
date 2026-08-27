@@ -1,0 +1,14 @@
+version: 2
+
+updates:
+  # The Go module has no third-party dependencies, so only the workflow
+  # actions need watching. Pinned action majors go stale quietly: a runner
+  # deprecation is announced as a warning long before it becomes an error.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    labels:
+      - ci

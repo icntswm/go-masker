@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/icntswm/go-masker/security/advisories/new
+    about: >-
+      Never report a masking failure that exposes data in a public issue.
+      Use a private security advisory instead; see SECURITY.md.

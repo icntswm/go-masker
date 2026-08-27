@@ -75,8 +75,13 @@ go-masker/
 ├── struct_metadata.go
 ├── PERFORMANCE.md
 ├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── RELEASING.md
 ├── .golangci.yml
-├── .github/workflows/ci.yml
+├── .github/
+│   ├── workflows/ci.yml
+│   ├── dependabot.yml
+│   └── ISSUE_TEMPLATE/
 ├── httpmask/
 │   ├── doc.go
 │   ├── adapter.go
