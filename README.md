@@ -7,33 +7,18 @@
 `go-masker` is a Go library for fail-closed masking of sensitive data before
 it reaches logs, diagnostics, traces, or other observability systems.
 
-One `MaskJSON` call with the default policy and no configuration:
+One `MaskJSON` call on a payload, with the default policy and no configuration:
 
-```json
-{
-  "user_id": "884213",
-  "email": "alice@example.com",
-  "card": "4111 1111 1111 1111",
-  "password": "hunter2",
-  "amount": 1499
-}
-```
-
-becomes
-
-```json
-{
-  "amount": 1499,
-  "card": "**** **** **** 1111",
-  "email": "a***@example.com",
-  "password": "[REDACTED]",
-  "user_id": "**4213"
-}
-```
+| Field | In | Out |
+| --- | --- | --- |
+| `password` | `hunter2` | `[REDACTED]` |
+| `card` | `4111 1111 1111 1111` | `**** **** **** 1111` |
+| `email` | `alice@example.com` | `a***@example.com` |
+| `user_id` | `884213` | `**4213` |
+| `amount` | `1499` | `1499` |
 
 Each field got the treatment its name implies, `amount` was left alone, and
-nothing had to be listed by hand. Both documents are indented here for reading;
-the library emits compact JSON with sorted keys.
+nothing had to be listed by hand.
 
 It provides one policy and rule model for:
 
