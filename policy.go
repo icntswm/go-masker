@@ -100,7 +100,7 @@ type keyEntry struct {
 }
 
 func isASCII(value string) bool {
-	for index := 0; index < len(value); index++ {
+	for index := range len(value) {
 		if value[index] >= utf8.RuneSelf {
 			return false
 		}

@@ -108,7 +108,7 @@ func maskLastFourUnits(input RuleInput) string {
 	if len(runes) <= 4 {
 		return input.Redaction
 	}
-	for i := 0; i < len(runes)-4; i++ {
+	for i := range len(runes) - 4 {
 		if !unicode.IsSpace(runes[i]) {
 			runes[i] = '*'
 		}

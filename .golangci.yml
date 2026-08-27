@@ -6,8 +6,67 @@ run:
 
 linters:
   enable:
+    # Defaults.
     - errcheck
     - govet
     - ineffassign
     - staticcheck
     - unused
+
+    # Error handling is the central invariant here: every public operation
+    # fails closed and callers match categories with errors.Is.
+    - errorlint
+    - nilerr
+
+    # Fail-closed behaviour must be structural, not incidental.
+    - exhaustive
+    - forcetypeassert
+    - gosec
+
+    # Correctness guards. These currently report nothing; they exist to catch
+    # a future change, not to clean up the present one.
+    - bodyclose
+    - noctx
+    - predeclared
+    - unconvert
+    - usestdlibvars
+    - wastedassign
+
+    # The project documents itself in English only.
+    - misspell
+
+    # Language features available since the go directive in go.mod.
+    - copyloopvar
+    - intrange
+
+  settings:
+    exhaustive:
+      # A switch over reflect.Kind cannot list all 26 constants; the default
+      # branch is the fail-closed path and counts as exhaustive.
+      default-signifies-exhaustive: true
+    misspell:
+      locale: US
+
+  # golangci-lint hides repeated findings by default, which makes a red run
+  # look smaller than it is. Show everything.
+  exclusions:
+    rules:
+      # Fixtures deliberately contain synthetic credentials and read paths
+      # under testdata/.
+      - path: _test\.go
+        linters:
+          - gosec
+      # A failed assertion in a test is a test failure with a stack trace,
+      # which is more informative than a hand-written ok check.
+      - path: _test\.go
+        linters:
+          - forcetypeassert
+      # Rewriting benchmark scaffolding is churn without a behaviour change;
+      # the rule still applies to shipped code.
+      - path: _test\.go
+        linters:
+          - intrange
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

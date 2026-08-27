@@ -292,7 +292,7 @@ func (w *walker) mapValue(value reflect.Value, field Field, depth int) any {
 
 func (w *walker) arrayValue(value reflect.Value, field Field, depth int) any {
 	result := make([]any, 0, w.resultCapacity(value.Len()))
-	for i := 0; i < value.Len(); i++ {
+	for i := range value.Len() {
 		if w.stop {
 			break
 		}
@@ -565,7 +565,9 @@ func scalarText(value reflect.Value) string {
 		return ""
 	}
 	if value.Type() == reflect.TypeOf(json.Number("")) {
-		return value.Interface().(json.Number).String()
+		// json.Number has string as its underlying type, so read it directly:
+		// Interface() panics on values reached through an unexported field.
+		return value.String()
 	}
 	switch value.Kind() {
 	case reflect.String:
@@ -705,7 +707,7 @@ func collectFields(typ reflect.Type, prefix []int, depth int, stack map[reflect.
 	}
 	stack[typ] = true
 	defer delete(stack, typ)
-	for i := 0; i < typ.NumField(); i++ {
+	for i := range typ.NumField() {
 		field := typ.Field(i)
 		if field.PkgPath != "" && !field.Anonymous {
 			continue

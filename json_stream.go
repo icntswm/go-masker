@@ -375,7 +375,14 @@ func acquireStreamObjectBuffers(largeHint bool) *streamObjectBuffers {
 		default:
 		}
 	}
-	return streamObjectBufferPool.Get().(*streamObjectBuffers)
+	if buffers, ok := streamObjectBufferPool.Get().(*streamObjectBuffers); ok {
+		return buffers
+	}
+	// Only *streamObjectBuffers is ever pooled; allocate rather than panic.
+	return &streamObjectBuffers{
+		scratch: make([]byte, 0, 256),
+		members: make([]streamJSONMember, 0, 8),
+	}
 }
 
 func releaseStreamObjectBuffers(buffers *streamObjectBuffers, scratch []byte, members []streamJSONMember) {

@@ -75,7 +75,7 @@ func TestJSONStreamingReportsDepthBeforeJSONValidatorLimit(t *testing.T) {
 func TestJSONStreamingKeyCacheIsBounded(t *testing.T) {
 	walker := &streamJSONWalker{}
 	var data []byte
-	for index := 0; index < streamJSONKeyCacheMaxEntries+1_000; index++ {
+	for index := range streamJSONKeyCacheMaxEntries + 1_000 {
 		key := `"field_` + strconv.Itoa(index) + `"`
 		start := len(data)
 		data = append(data, key...)

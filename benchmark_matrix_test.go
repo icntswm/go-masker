@@ -470,7 +470,7 @@ func containsMatrixString(value any, want string) bool {
 		return false
 	}
 	if valueOf.Kind() == reflect.Struct {
-		for i := 0; i < valueOf.NumField(); i++ {
+		for i := range valueOf.NumField() {
 			if containsMatrixString(valueOf.Field(i).Interface(), want) {
 				return true
 			}

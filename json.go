@@ -3,6 +3,7 @@ package masker
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"unicode/utf8"
@@ -32,7 +33,7 @@ func (m *Masker) MaskJSONReader(src io.Reader) (result []byte, err error) {
 	}
 	data, readErr := readLimited(src, m.cfg.maxInputBytes)
 	if readErr != nil {
-		if readErr == errInputLimit {
+		if errors.Is(readErr, errInputLimit) {
 			return m.safeJSONFallback(), maskError(CodeInputLimit, "mask_json", "$")
 		}
 		return m.safeJSONFallback(), maskError(CodeInvalidJSON, "mask_json", "$")

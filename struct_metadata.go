@@ -41,13 +41,19 @@ type structConflictMetadata struct {
 
 func (c *structMetadataCache) load(typ reflect.Type, tagName string, tagRules map[string]Rule, policy Policy) *structMetadata {
 	if cached, ok := c.entries.Load(typ); ok {
-		return cached.(*structMetadata)
+		if metadata, ok := cached.(*structMetadata); ok {
+			return metadata
+		}
 	}
 
 	c.builds.Add(1)
 	built := buildStructMetadata(typ, tagName, tagRules, policy)
 	actual, _ := c.entries.LoadOrStore(typ, built)
-	return actual.(*structMetadata)
+	if metadata, ok := actual.(*structMetadata); ok {
+		return metadata
+	}
+	// Only *structMetadata is ever stored; rebuild rather than panic.
+	return built
 }
 
 func buildStructMetadata(typ reflect.Type, tagName string, tagRules map[string]Rule, policy Policy) *structMetadata {
