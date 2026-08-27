@@ -59,29 +59,20 @@ jobs:
         with:
           version: v2.11.4
 
-  coverage:
-    name: Coverage
+  vulncheck:
+    name: Vulnerability scan
     runs-on: ubuntu-latest
-    # The secret is read into env because `secrets` is not available in a step
-    # `if`. Without it the upload is skipped and the job still passes, so the
-    # workflow stays green until the token is added.
-    env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.23.x'
+          # govulncheck itself needs a recent toolchain; it reports on the
+          # standard library this module is built against.
+          go-version: stable
           cache: true
           cache-dependency-path: go.mod
-      - name: Collect coverage
-        run: go test -covermode=atomic -coverprofile=coverage.out ./...
-      - name: Upload to Codecov
-        if: env.CODECOV_TOKEN != ''
-        uses: codecov/codecov-action@v7
-        with:
-          files: coverage.out
-          fail_ci_if_error: true
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   masking-matrix:
     name: Masking matrix (Go ${{ matrix.go-version }})
