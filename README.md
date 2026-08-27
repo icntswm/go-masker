@@ -52,6 +52,9 @@ list misses:
 It is not a substitute for not collecting the secret in the first place, and it
 cannot prove that a custom rule you wrote is safe.
 
+Each of those claims is checked by the suite; see
+[How it is tested](#how-it-is-tested).
+
 ## Table of contents
 
 - [Why a library instead of a field filter](#why-a-library-instead-of-a-field-filter)
@@ -65,6 +68,7 @@ cannot prove that a custom rule you wrote is safe.
 - [HTTP headers and URLs](#http-headers-and-urls)
 - [Errors and fail-closed behavior](#errors-and-fail-closed-behavior)
 - [Limits and security](#limits-and-security)
+- [How it is tested](#how-it-is-tested)
 - [Performance](#performance)
 - [Documentation map](#documentation-map)
 - [Compatibility and stability](#compatibility-and-stability)
@@ -324,11 +328,35 @@ Read [SECURITY.md](SECURITY.md) for vulnerability reporting and
 [THREAT_MODEL.md](THREAT_MODEL.md) for the security assumptions and failure
 model.
 
+## How it is tested
+
+A masking library is only worth what its test suite proves, so the evidence is
+listed rather than asserted. There are 4,985 lines of tests against 3,494 lines
+of shipped code.
+
+| | |
+| --- | --- |
+| Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
+| Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
+| Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
+| Examples | 26, executed and output-checked, so documentation cannot drift from behaviour |
+| Coverage | 81.2% core, 89.4% `httpmask` |
+| Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
+| Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
+
+The version matrix earns its cost: it caught a change in `encoding/json` string
+escaping in Go 1.27 on the day `stable` moved. A separate check then confirmed
+what mattered - masking a fixed corpus under every supported release still
+produces byte-identical output.
+
 ## Performance
 
 The streaming JSON walker, bounded key cache, direct encoder, and per-masker
 reflection metadata cache are designed for predictable behavior on nested and
-wide payloads. Current reference numbers and the methodology are in
+wide payloads. On an M3 Pro, full redaction of a string costs 15 ns and
+allocates nothing, and a 10,000-record JSON document is masked at roughly
+134 MB/s. Throughput stays flat as documents grow wider or longer, which
+matters more than the absolute numbers; the method and the full tables are in
 [PERFORMANCE.md](PERFORMANCE.md).
 
 Run local checks and benchmarks with:
