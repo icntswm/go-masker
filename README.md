@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/icntswm/go-masker.svg)](https://pkg.go.dev/github.com/icntswm/go-masker)
 [![CI](https://github.com/icntswm/go-masker/actions/workflows/ci.yml/badge.svg)](https://github.com/icntswm/go-masker/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/github/license/icntswm/go-masker)](LICENSE)
 
 `go-masker` is a Go library for fail-closed masking of sensitive data before
 it reaches logs, diagnostics, traces, or other observability systems.
