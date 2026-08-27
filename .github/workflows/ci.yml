@@ -24,8 +24,8 @@ jobs:
         # plus stable so a new Go release is caught before it is listed here.
         go-version: ['1.23.x', '1.24.x', '1.25.x', '1.26.x', '1.27.x', 'stable']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
@@ -45,8 +45,8 @@ jobs:
     name: Lint (golangci-lint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           # Single pinned version on purpose: golangci-lint embeds go/types from
           # the Go release it was built with and panics on a newer toolchain.
@@ -67,8 +67,8 @@ jobs:
       matrix:
         go-version: ['1.23.x', '1.24.x', '1.25.x', '1.26.x', '1.27.x', 'stable']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
@@ -85,8 +85,8 @@ jobs:
       matrix:
         go-version: ['1.23.x', '1.24.x', '1.25.x', '1.26.x', '1.27.x', 'stable']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
           cache: true
