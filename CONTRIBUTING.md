@@ -30,10 +30,10 @@ make bench-matrix  # 260 masking scenarios, each result checked
 make fuzz          # all five fuzz targets, 30s each
 ```
 
-`make test` does not run the 260-case matrix: those scenarios live inside
-`BenchmarkMaskMatrix` and validate their result after the timed loop. Run
-`make bench-matrix` when you touch masking behaviour, or CI will catch it for
-you in a separate job.
+The 260 masking scenarios run twice. `make test` executes them through
+`TestBenchmarkMatrixCorrectness`, which checks every masked result and asserts
+the case count. `make bench-matrix` runs the same scenarios as benchmarks, so
+use it when a change could affect performance rather than correctness.
 
 To run a single test or example:
 

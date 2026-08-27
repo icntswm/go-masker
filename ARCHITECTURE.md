@@ -54,6 +54,7 @@ The current repository layout is:
 go-masker/
 ├── go.mod
 ├── README.md
+├── AGENTS.md
 ├── LICENSE
 ├── SECURITY.md
 ├── THREAT_MODEL.md
@@ -707,8 +708,9 @@ The root package benchmarks built-in rules, reflection, JSON, headers, URLs,
 policy lookup, and wide objects with both ordinary and collision-shaped keys.
 The 260-case matrix in `benchmark_matrix_test.go` runs under
 `make bench-matrix`. Each scenario validates its masked result after the timed
-loop, so the matrix is a correctness gate as well as a benchmark. `go test`
-does not run it, which is why CI has a separate matrix job.
+loop, so the matrix is a correctness gate as well as a benchmark.
+`TestBenchmarkMatrixCorrectness` runs every scenario under `go test`;
+`make bench-matrix` runs the same set as benchmarks for timing.
 
 Benchmarks use only the standard library. Comparisons against other masking
 libraries are run out of tree so the repository never references or depends on

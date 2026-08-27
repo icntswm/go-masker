@@ -81,9 +81,10 @@ JSON output path.
 
 ## Correctness and benchmark matrix
 
-`make bench-matrix` runs 260 generated scenarios. Each scenario validates its
-masked result after the timed loop, so this target is the only place the
-matrix cases are checked; `go test` does not run them.
+The matrix generates 260 scenarios. `TestBenchmarkMatrixCorrectness` runs
+every one of them as a subtest under `go test` and asserts the case count, so
+correctness is covered by the ordinary suite. `make bench-matrix` runs the
+same scenarios as benchmarks to add the timing dimension.
 
 | Area | Cases | Median ns/op | Min | Max | Median B/op | Median allocs/op |
 |---|---:|---:|---:|---:|---:|---:|
