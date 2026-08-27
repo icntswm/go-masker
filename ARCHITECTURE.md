@@ -75,7 +75,6 @@ go-masker/
 ├── struct_metadata.go
 ├── PERFORMANCE.md
 ├── CONTRIBUTING.md
-├── CODE_OF_CONDUCT.md
 ├── RELEASING.md
 ├── .golangci.yml
 ├── .github/
