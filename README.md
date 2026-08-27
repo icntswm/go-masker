@@ -6,6 +6,15 @@
 `go-masker` is a Go library for fail-closed masking of sensitive data before
 it reaches logs, diagnostics, traces, or other observability systems.
 
+```text
+before  {"user_id":"884213","email":"alice@example.com","card":"4111 1111 1111 1111","password":"hunter2","amount":1499}
+after   {"amount":1499,"card":"**** **** **** 1111","email":"a***@example.com","password":"[REDACTED]","user_id":"**4213"}
+```
+
+That is `MaskJSON` with the default policy and no configuration. Each field got
+the treatment its name implies, `amount` was left alone, and nothing had to be
+listed by hand.
+
 It provides one policy and rule model for:
 
 - strings and scalar values;
@@ -17,8 +26,30 @@ It provides one policy and rule model for:
 The core has no third-party runtime dependencies and does not depend on an HTTP
 framework or logging library.
 
+## Why a library instead of a field filter
+
+A list of field names in a logger config covers the fields you remembered, at
+the depth you remembered them. This library is built around the cases that
+list misses:
+
+- **Errors never fall back to the input.** Every operation returns a safe
+  marker on failure. A filter that errors typically logs the raw value, which
+  is the moment you needed it least.
+- **Depth is not special.** The same policy applies to a nested JSON object, a
+  struct field, a map inside a slice, a URL query parameter and an HTTP header.
+- **Hostile input stays bounded.** Traversal depth, visited nodes and input
+  size are capped; JSON is scanned iteratively, so deeply nested input cannot
+  exhaust the goroutine stack.
+- **Output does not drift.** Masking a fixed corpus under Go 1.23 through 1.27
+  produces byte-identical results; the digests are recorded in
+  [PERFORMANCE.md](PERFORMANCE.md).
+
+It is not a substitute for not collecting the secret in the first place, and it
+cannot prove that a custom rule you wrote is safe.
+
 ## Table of contents
 
+- [Why a library instead of a field filter](#why-a-library-instead-of-a-field-filter)
 - [Supported Go versions](#supported-go-versions)
 - [Installation](#installation)
 - [Quick start](#quick-start)
