@@ -78,9 +78,10 @@ Each of those claims is checked by the suite; see
 ## Supported Go versions
 
 The library requires Go 1.23 or newer and uses only the standard library. The
-CI workflow runs the tests, the race suite, the correctness matrix, and a fuzz
+CI workflow runs the tests, the race suite, the correctness matrix and a fuzz
 smoke pass on every supported minor release — 1.23.x, 1.24.x, 1.25.x, 1.26.x,
 1.27.x — plus `stable`, so a new Go release is covered on the day it ships.
+A separate job runs `govulncheck` on every push.
 
 ## Installation
 

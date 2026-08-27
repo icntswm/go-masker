@@ -33,13 +33,13 @@ jobs:
           # without this the cache is disabled and every job recompiles.
           cache-dependency-path: go.mod
       - name: Vet
-        run: go vet ./...
+        run: make vet
       - name: Check formatting
-        run: test -z "$(gofmt -l .)"
+        run: make fmt-check
       - name: Unit tests
-        run: go test ./...
+        run: make test
       - name: Unit tests with race detector
-        run: go test -race ./...
+        run: make race
 
   lint:
     name: Lint (golangci-lint)
@@ -72,7 +72,7 @@ jobs:
           cache: true
           cache-dependency-path: go.mod
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: make vulncheck
 
   masking-matrix:
     name: Masking matrix (Go ${{ matrix.go-version }})

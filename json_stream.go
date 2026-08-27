@@ -66,13 +66,17 @@ const (
 	streamJSONKeyCacheMaxChain    = 8
 )
 
+// newStreamObjectBuffers is the single place the starting capacities live, so
+// the pool and its fallback cannot drift apart.
+func newStreamObjectBuffers() *streamObjectBuffers {
+	return &streamObjectBuffers{
+		scratch: make([]byte, 0, 256),
+		members: make([]streamJSONMember, 0, 8),
+	}
+}
+
 var streamObjectBufferPool = sync.Pool{
-	New: func() any {
-		return &streamObjectBuffers{
-			scratch: make([]byte, 0, 256),
-			members: make([]streamJSONMember, 0, 8),
-		}
-	},
+	New: func() any { return newStreamObjectBuffers() },
 }
 
 // Keep large buffers bounded; sync.Pool is intentionally not used for them.
@@ -379,10 +383,7 @@ func acquireStreamObjectBuffers(largeHint bool) *streamObjectBuffers {
 		return buffers
 	}
 	// Only *streamObjectBuffers is ever pooled; allocate rather than panic.
-	return &streamObjectBuffers{
-		scratch: make([]byte, 0, 256),
-		members: make([]streamJSONMember, 0, 8),
-	}
+	return newStreamObjectBuffers()
 }
 
 func releaseStreamObjectBuffers(buffers *streamObjectBuffers, scratch []byte, members []streamJSONMember) {

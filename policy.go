@@ -302,15 +302,15 @@ func sameRule(left, right Rule) bool {
 }
 
 func policyNeedsPaths(policy Policy) bool {
-	switch typed := policy.(type) {
-	case *KeyPolicy:
-		return false
+	switch chain := policy.(type) {
 	case *chainPolicy:
-		for _, chained := range typed.policies {
+		for _, chained := range chain.policies {
 			if policyNeedsPaths(chained) {
 				return true
 			}
 		}
+		return false
+	case *KeyPolicy:
 		return false
 	default:
 		return true

@@ -2,9 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and releases will follow semantic versioning once the public import path is
-chosen.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Releases follow semantic versioning; while the major version is `0` the public
+API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
@@ -34,6 +34,9 @@ chosen.
   `Masker` construction.
 - Renamed public error values to idiomatic `Err*` names and reserved the
   `Code*` prefix for `ErrorCode` constants.
+- Widened linting beyond the golangci-lint defaults, covering error wrapping,
+  exhaustive switches, unchecked type assertions and spelling.
+- Added a `govulncheck` job and ran every supported Go minor release in CI.
 
 ### Fixed
 
@@ -51,6 +54,13 @@ chosen.
 - Matched `encoding/json` embedded-field promotion and same-depth tag rules.
 - Detected conflicting fold-equivalent bindings by Rule identity rather than
   Rule name.
+- Compared the reader's input-limit sentinel with `errors.Is`, so a wrapped
+  error is reported as `input_limit` instead of `invalid_json`.
+- Read `json.Number` scalars directly instead of asserting through
+  `reflect.Value.Interface`, which panics on a value reached through an
+  unexported field.
+- Fell back to a fresh value instead of panicking if the buffer pool or the
+  struct-metadata cache ever returned an unexpected type.
 
 ### Security
 
@@ -63,5 +73,5 @@ chosen.
 
 ### Documentation
 
-- Added the public `github.com/icntswm/go-masker` module path, usage guide, FAQ,
-  and release documentation.
+- Settled the public module path `github.com/icntswm/go-masker` and added
+  release, contribution and agent-facing documentation.

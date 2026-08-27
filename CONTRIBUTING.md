@@ -21,6 +21,7 @@ currently `v2.11.4`; see [Linting](#linting) for why the version matters.
 
 ```text
 make fmt           # gofmt -w .
+make fmt-check     # fail if gofmt would change anything
 make vet           # go vet ./...
 make lint          # golangci-lint config verify + run
 make test          # go test ./...
@@ -28,6 +29,7 @@ make race          # go test -race ./...
 make bench         # root benchmarks
 make bench-matrix  # 260 masking scenarios, each result checked
 make fuzz          # all five fuzz targets, 30s each
+make vulncheck     # govulncheck against the standard library
 ```
 
 The 260 masking scenarios run twice. `make test` executes them through
@@ -50,13 +52,15 @@ go test -run '^$' -fuzz FuzzMaskJSON -fuzztime 5m .
 
 ## What CI runs
 
-Four jobs, all required:
+Five jobs, all required. Each one runs a Makefile target, so a local run and
+a CI run cannot diverge:
 
 | Job | What it does |
 | --- | --- |
-| `Tests & checks` | vet, formatting, unit tests, race suite — on Go 1.23.x through 1.27.x plus `stable` |
+| `Tests & checks` | `make vet`, `make fmt-check`, `make test`, `make race` — on Go 1.23.x through 1.27.x plus `stable` |
 | `Masking matrix` | `make bench-matrix` on the same six versions |
-| `Fuzz smoke` | all five fuzz targets, 30s each, on the same six versions |
+| `Fuzz smoke` | `make fuzz`, all five targets at 30s each, on the same six versions |
+| `Vulnerability scan` | `make vulncheck` on a recent toolchain |
 | `Lint` | `golangci-lint` on one pinned Go version |
 
 ### Linting

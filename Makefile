@@ -1,7 +1,11 @@
-.PHONY: fmt vet lint test race bench bench-matrix fuzz fuzz-core fuzz-http fuzz-json fuzz-string fuzz-policy fuzz-json-parity
+.PHONY: fmt fmt-check vet lint vulncheck test race bench bench-matrix fuzz fuzz-core fuzz-http fuzz-json fuzz-string fuzz-policy fuzz-json-parity
 
 fmt:
 	gofmt -w .
+
+# Same check CI runs: report files that gofmt would change, do not rewrite them.
+fmt-check:
+	test -z "$$(gofmt -l .)"
 
 vet:
 	go vet ./...
@@ -10,6 +14,10 @@ vet:
 lint:
 	golangci-lint config verify
 	golangci-lint run
+
+# Reports standard-library advisories on code paths this module actually calls.
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 test:
 	go test ./...

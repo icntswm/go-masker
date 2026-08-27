@@ -54,30 +54,31 @@ The current repository layout is:
 go-masker/
 ├── go.mod
 ├── README.md
-├── AGENTS.md
 ├── LICENSE
+├── AGENTS.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── PERFORMANCE.md
+├── RELEASING.md
 ├── SECURITY.md
 ├── THREAT_MODEL.md
-├── CHANGELOG.md
 ├── ARCHITECTURE.md
+├── Makefile
+├── .golangci.yml
 ├── doc.go
+├── errors.go
+├── json.go
+├── json_encode.go
+├── json_lex.go
+├── json_stream.go
+├── json_walk.go
 ├── masker.go
 ├── options.go
 ├── policy.go
 ├── rule.go
 ├── rules_builtin.go
-├── errors.go
-├── walk.go
-├── json.go
-├── json_lex.go
-├── json_encode.go
-├── json_walk.go
-├── json_stream.go
 ├── struct_metadata.go
-├── PERFORMANCE.md
-├── CONTRIBUTING.md
-├── RELEASING.md
-├── .golangci.yml
+├── walk.go
 ├── .github/
 │   ├── workflows/ci.yml
 │   ├── dependabot.yml
@@ -85,14 +86,18 @@ go-masker/
 ├── httpmask/
 │   ├── doc.go
 │   ├── adapter.go
+│   └── *_test.go
 ├── testdata/
 │   └── security_decisions/
+├── benchmark_matrix_test.go
+├── benchmark_test.go
 ├── examples_test.go
 ├── fuzz_test.go
-├── benchmark_test.go
-├── benchmark_matrix_test.go
+├── goldens_test.go
+├── json_encode_test.go
 ├── json_scan_test.go
-└── goldens_test.go
+├── json_walk_test.go
+└── masker_test.go
 ```
 
 The core remains a single root package. Splitting the walker into internal
@@ -759,8 +764,6 @@ fall back to the original value when masking returns an error.
   semantic absence of secrets.
 - Rune-safe masking guarantees valid Unicode boundaries but does not guarantee
   grapheme-cluster preservation.
-- Default depth, node, and byte limits are 32, 100,000, and 8 MiB. They should
-  still be validated against real payload distributions before release.
 - JSON uses the streaming walker, but `MaskJSONReader` still reads the
   complete input into memory before processing.
 - Safe booleans are converted to strings by default in every pipeline;
