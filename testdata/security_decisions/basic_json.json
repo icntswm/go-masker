@@ -1,0 +1,6 @@
+{
+  "name": "token-is-fully-redacted",
+  "operation": "json",
+  "input": {"token": "synthetic-secret", "safe": 42},
+  "output": {"token": "[REDACTED]", "safe": 42}
+}

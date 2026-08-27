@@ -1,0 +1,120 @@
+# Contributing
+
+Bug reports and pull requests are welcome. Security issues are different: do
+not open an issue for them, follow [SECURITY.md](SECURITY.md) instead.
+
+## Getting set up
+
+The project needs Go 1.23 or newer and nothing else. There are no third-party
+dependencies and therefore no `go.sum`.
+
+```text
+git clone https://github.com/icntswm/go-masker
+cd go-masker
+make test
+```
+
+`golangci-lint` is only needed for `make lint`. Install the version CI pins,
+currently `v2.11.4`; see [Linting](#linting) for why the version matters.
+
+## Running checks
+
+```text
+make fmt           # gofmt -w .
+make vet           # go vet ./...
+make lint          # golangci-lint config verify + run
+make test          # go test ./...
+make race          # go test -race ./...
+make bench         # root benchmarks
+make bench-matrix  # 260 masking scenarios, each result checked
+make fuzz          # all five fuzz targets, 30s each
+```
+
+`make test` does not run the 260-case matrix: those scenarios live inside
+`BenchmarkMaskMatrix` and validate their result after the timed loop. Run
+`make bench-matrix` when you touch masking behaviour, or CI will catch it for
+you in a separate job.
+
+To run a single test or example:
+
+```text
+go test -run TestKeyPolicyASCIIAndUnicodeParity ./...
+go test -run ExampleMasker_MaskJSON ./...
+```
+
+To run one fuzz target for longer than the smoke pass:
+
+```text
+go test -run '^$' -fuzz FuzzMaskJSON -fuzztime 5m .
+```
+
+## What CI runs
+
+Four jobs, all required:
+
+| Job | What it does |
+| --- | --- |
+| `Tests & checks` | vet, formatting, unit tests, race suite — on Go 1.23.x through 1.27.x plus `stable` |
+| `Masking matrix` | `make bench-matrix` on the same six versions |
+| `Fuzz smoke` | all five fuzz targets, 30s each, on the same six versions |
+| `Lint` | `golangci-lint` on one pinned Go version |
+
+### Linting
+
+The lint job pins Go 1.23.x on purpose. `golangci-lint` statically links
+`go/types` from the Go release it was built with, and it panics when it meets
+standard-library sources from a newer toolchain. Keep the lint job's Go version
+at or below the release that built the pinned linter, and bump both together.
+
+`make lint` runs `golangci-lint config verify` before `golangci-lint run`,
+because `run` ignores unknown configuration keys while the CI action rejects
+them. Without the verify step a broken `.golangci.yml` passes locally and fails
+in CI.
+
+### When Fuzz smoke fails
+
+Fuzzing is not deterministic, so a fuzz job can fail on a pull request that did
+not introduce the bug. Do not just re-run it. Download the failing input from
+the job's artifacts or reproduce locally, commit it to `testdata/fuzz/<Target>/`
+as a regression seed, and fix the cause. A committed seed is replayed by every
+later `go test`, so the same input can never regress silently.
+
+## Writing tests
+
+- Add a regression test for every parser, policy, or fail-closed change.
+- Golden cases for JSON, headers and URLs go in
+  `testdata/security_decisions/`; the schema is documented in the
+  [README there](testdata/security_decisions/README.md). Cases that cannot be
+  expressed as JSON — cycles, shared DAGs, struct-tag precedence — stay
+  table-driven in Go.
+- Never use real credentials or production data in tests, benchmarks, examples
+  or fixtures. Use `example.com` addresses and clearly synthetic values.
+
+### Examples
+
+Every `Example*` function must end with an `// Output:` block. Without one, Go
+compiles the example but never runs it, so it silently stops matching the
+implementation. Put the block inside the function body, not after the closing
+brace, and take the expected text from a real run rather than writing it by
+hand.
+
+## Benchmarks
+
+Prepare inputs before `b.ResetTimer()`, call `b.ReportAllocs()`, and assign
+results to a package-level sink so the compiler cannot optimise the work away.
+Allocation counts travel between machines much better than nanoseconds; prefer
+them when arguing that a change is a regression. Reference numbers and the
+measurement method are in [PERFORMANCE.md](PERFORMANCE.md).
+
+## Pull requests
+
+- Keep changes focused, and say what the security or compatibility effect is.
+- Explain user-visible behaviour changes in the description, not only in code.
+- Update `CHANGELOG.md` for anything a user would notice: fixes, security
+  changes, and API changes.
+- Public API changes need an explicit note while the project is pre-1.0; the
+  package name stays `masker` even though the module is `go-masker`, following
+  the usual Go convention.
+- Documentation lives close to the code it describes. Prefer a runnable example
+  over a markdown snippet: examples are compiled and output-checked, prose is
+  not.

@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "name": "nested-containers-normalized",
+      "operation": "json",
+      "input": {
+        "ok": true,
+        "amount": 100,
+        "none": null,
+        "text": "plain",
+        "user": {
+          "email": "a@b.c",
+          "orders": [{"total": 7}, {"note": "n"}]
+        }
+      },
+      "output": {
+        "ok": "true",
+        "amount": 100,
+        "none": null,
+        "text": "plain",
+        "user": {
+          "email": "a***@b.c",
+          "orders": [{"total": 7}, {"note": "n"}]
+        }
+      }
+    },
+    {
+      "name": "duplicate-keys-last-wins",
+      "operation": "json",
+      "input": {"v": "first", "v": "second"},
+      "output": {"v": "second"}
+    },
+    {
+      "name": "secret-found-at-depth",
+      "operation": "json",
+      "input": {"l1": {"l2": {"l3": {"l4": {"l5": {"l6": {"l7": {"l8": {"secret": "deep"}}}}}}}}},
+      "output": {"l1": {"l2": {"l3": {"l4": {"l5": {"l6": {"l7": {"l8": {"secret": "[REDACTED]"}}}}}}}}}
+    }
+  ]
+}

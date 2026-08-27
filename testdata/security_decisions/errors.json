@@ -1,0 +1,50 @@
+{
+  "cases": [
+    {
+      "name": "truncated-document-fails-closed",
+      "operation": "json_error",
+      "input": "{\"token\":\"x",
+      "output": "[REDACTED]",
+      "error_code": "invalid_json"
+    },
+    {
+      "name": "trailing-content-after-document-fails-closed",
+      "operation": "json_error",
+      "input": "{\"a\":1} trailing-garbage",
+      "output": "[REDACTED]",
+      "error_code": "invalid_json"
+    },
+    {
+      "name": "two-documents-in-stream-fail-closed",
+      "operation": "json_error",
+      "input": "{\"a\":1} {\"b\":2}",
+      "output": "[REDACTED]",
+      "error_code": "invalid_json"
+    },
+    {
+      "name": "empty-input-fails-closed",
+      "operation": "json_error",
+      "input": "",
+      "output": "[REDACTED]",
+      "error_code": "invalid_json"
+    },
+    {
+      "name": "null-document-passes-through",
+      "operation": "json",
+      "input": null,
+      "output": null
+    },
+    {
+      "name": "string-document-passes-through",
+      "operation": "json",
+      "input": "plain",
+      "output": "plain"
+    },
+    {
+      "name": "number-document-passes-through",
+      "operation": "json",
+      "input": 12345,
+      "output": 12345
+    }
+  ]
+}

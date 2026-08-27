@@ -1,0 +1,43 @@
+{
+  "cases": [
+    {
+      "name": "userinfo-and-query-tokens-masked",
+      "operation": "url",
+      "input": "https://alice:s3cret@example.com/p?q=x&token=t1&token=t2&keep=1",
+      "output": "https://%5BREDACTED%5D@example.com/p?keep=1&q=x&token=%5BREDACTED%5D&token=%5BREDACTED%5D"
+    },
+    {
+      "name": "fragment-preserved-by-default",
+      "operation": "url",
+      "input": "https://example.com/app/route#section-1",
+      "output": "https://example.com/app/route#section-1"
+    },
+    {
+      "name": "paranoid-fragment-masked",
+      "operation": "url",
+      "options": {"mask_fragment": true},
+      "input": "https://example.com/app#route=a/b",
+      "output": "https://example.com/app#%5BREDACTED%5D"
+    },
+    {
+      "name": "opaque-url-fails-closed",
+      "operation": "url",
+      "input": "mailto:user@example.com",
+      "output": "[REDACTED]",
+      "error_expected": true
+    },
+    {
+      "name": "malformed-query-fails-closed",
+      "operation": "url",
+      "input": "https://example.com/x?a=%zz&token=t",
+      "output": "[REDACTED]",
+      "error_expected": true
+    },
+    {
+      "name": "plain-url-preserved",
+      "operation": "url",
+      "input": "https://example.com/path",
+      "output": "https://example.com/path"
+    }
+  ]
+}

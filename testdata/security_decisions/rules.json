@@ -1,0 +1,88 @@
+{
+  "cases": [
+    {
+      "name": "password-fully-redacted",
+      "operation": "json",
+      "input": {"password": "hunter2"},
+      "output": {"password": "[REDACTED]"}
+    },
+    {
+      "name": "api-key-fully-redacted",
+      "operation": "json",
+      "input": {"api_key": "sk-live-synthetic"},
+      "output": {"api_key": "[REDACTED]"}
+    },
+    {
+      "name": "email-preserves-safe-shape",
+      "operation": "json",
+      "input": {"email": "alice@example.com"},
+      "output": {"email": "a***@example.com"}
+    },
+    {
+      "name": "malformed-email-fully-redacted",
+      "operation": "json",
+      "input": {"e-mail": "not-an-email"},
+      "output": {"e-mail": "[REDACTED]"}
+    },
+    {
+      "name": "email-with-space-fully-redacted",
+      "operation": "json",
+      "input": {"email": " alice@example.com"},
+      "output": {"email": "[REDACTED]"}
+    },
+    {
+      "name": "phone-keeps-last-four-digits",
+      "operation": "json",
+      "input": {"phone": "15551234567"},
+      "output": {"phone": "*******4567"}
+    },
+    {
+      "name": "formatted-phone-preserves-separators",
+      "operation": "json",
+      "input": {"phone_number": "+1 (555) 123-4567"},
+      "output": {"phone_number": "+* (***) ***-4567"}
+    },
+    {
+      "name": "short-phone-fully-redacted",
+      "operation": "json",
+      "input": {"mobile": "123"},
+      "output": {"mobile": "[REDACTED]"}
+    },
+    {
+      "name": "card-keeps-last-four-digits",
+      "operation": "json",
+      "input": {"card_number": "4111111111111111"},
+      "output": {"card_number": "************1111"}
+    },
+    {
+      "name": "exactly-four-digits-preserved",
+      "operation": "json",
+      "input": {"card": "1234"},
+      "output": {"card": "[REDACTED]"}
+    },
+    {
+      "name": "short-id-fully-redacted",
+      "operation": "json",
+      "input": {"id": "777"},
+      "output": {"id": "[REDACTED]"}
+    },
+    {
+      "name": "id-keeps-last-four-units",
+      "operation": "json",
+      "input": {"user_id": "AB-987654"},
+      "output": {"user_id": "*****7654"}
+    },
+    {
+      "name": "numeric-sensitive-becomes-string",
+      "operation": "json",
+      "input": {"card": 4111111111111111},
+      "output": {"card": "************1111"}
+    },
+    {
+      "name": "numeric-safe-keeps-exact-number",
+      "operation": "json",
+      "input": {"amount": 9007199254740993},
+      "output": {"amount": 9007199254740993}
+    }
+  ]
+}

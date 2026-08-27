@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "name": "cookies-fully-redacted",
+      "operation": "headers",
+      "input": {
+        "Cookie": ["a=b; c=d"],
+        "Set-Cookie": ["sid=x; HttpOnly"]
+      },
+      "output": {
+        "Cookie": ["[REDACTED]"],
+        "Set-Cookie": ["[REDACTED]"]
+      }
+    },
+    {
+      "name": "cookie-key-case-insensitive",
+      "operation": "headers",
+      "input": {"cOoKiE": ["s=t"]},
+      "output": {"cOoKiE": ["[REDACTED]"]}
+    },
+    {
+      "name": "authorization-multi-values-redacted",
+      "operation": "headers",
+      "input": {"Authorization": ["Bearer z", "Bearer y"]},
+      "output": {"Authorization": ["[REDACTED]", "[REDACTED]"]}
+    },
+    {
+      "name": "unknown-headers-preserved",
+      "operation": "headers",
+      "input": {
+        "X-Trace": ["trace"],
+        "Accept": ["text/html", "application/json"]
+      },
+      "output": {
+        "X-Trace": ["trace"],
+        "Accept": ["text/html", "application/json"]
+      }
+    }
+  ]
+}

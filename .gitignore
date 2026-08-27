@@ -1,0 +1,7 @@
+.gocache/
+.*-gocache/
+*.test
+*.prof
+coverage.out
+.DS_Store
+graphify-out/

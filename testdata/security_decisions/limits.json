@@ -1,0 +1,185 @@
+{
+  "cases": [
+    {
+      "name": "default-depth-accommodates-thirty-two-levels",
+      "operation": "json",
+      "input": {
+        "l1": {
+          "l2": {
+            "l3": {
+              "l4": {
+                "l5": {
+                  "l6": {
+                    "l7": {
+                      "l8": {
+                        "l9": {
+                          "l10": {
+                            "l11": {
+                              "l12": {
+                                "l13": {
+                                  "l14": {
+                                    "l15": {
+                                      "l16": {
+                                        "l17": {
+                                          "l18": {
+                                            "l19": {
+                                              "l20": {
+                                                "l21": {
+                                                  "l22": {
+                                                    "l23": {
+                                                      "l24": {
+                                                        "l25": {
+                                                          "l26": {
+                                                            "l27": {
+                                                              "l28": {
+                                                                "l29": {
+                                                                  "l30": {
+                                                                    "l31": {
+                                                                      "l32": 42
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "output": {
+        "l1": {
+          "l2": {
+            "l3": {
+              "l4": {
+                "l5": {
+                  "l6": {
+                    "l7": {
+                      "l8": {
+                        "l9": {
+                          "l10": {
+                            "l11": {
+                              "l12": {
+                                "l13": {
+                                  "l14": {
+                                    "l15": {
+                                      "l16": {
+                                        "l17": {
+                                          "l18": {
+                                            "l19": {
+                                              "l20": {
+                                                "l21": {
+                                                  "l22": {
+                                                    "l23": {
+                                                      "l24": {
+                                                        "l25": {
+                                                          "l26": {
+                                                            "l27": {
+                                                              "l28": {
+                                                                "l29": {
+                                                                  "l30": {
+                                                                    "l31": {
+                                                                      "l32": 42
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "custom-depth-limit-fails-closed",
+      "operation": "json",
+      "options": {
+        "max_depth": 1
+      },
+      "input": {
+        "a": {
+          "b": {
+            "c": "x"
+          }
+        }
+      },
+      "output": "[REDACTED]",
+      "error_code": "depth_limit"
+    },
+    {
+      "name": "node-limit-fails-closed",
+      "operation": "json",
+      "options": {
+        "max_nodes": 6
+      },
+      "input": {
+        "a": [
+          1,
+          2
+        ],
+        "b": [
+          3,
+          4
+        ]
+      },
+      "output": "[REDACTED]",
+      "error_code": "node_limit"
+    },
+    {
+      "name": "input-bytes-limit-fails-closed",
+      "operation": "json",
+      "options": {
+        "max_input_bytes": 16
+      },
+      "input": {
+        "token": "x-y-z-z-z"
+      },
+      "output": "[REDACTED]",
+      "error_code": "input_limit"
+    }
+  ]
+}

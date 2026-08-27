@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "name": "uppercase-password-redacted",
+      "operation": "json",
+      "input": {"PASSWORD": "hunter2"},
+      "output": {"PASSWORD": "[REDACTED]"}
+    },
+    {
+      "name": "mixed-case-token-redacted",
+      "operation": "json",
+      "input": {"ToKeN": "abc123"},
+      "output": {"ToKeN": "[REDACTED]"}
+    },
+    {
+      "name": "hyphenated-alias-matched-insensitively",
+      "operation": "json",
+      "input": {"E-Mail": "Ann@example.com"},
+      "output": {"E-Mail": "A***@example.com"}
+    },
+    {
+      "name": "unmatched-key-preserved",
+      "operation": "json",
+      "input": {"username": "ololo"},
+      "output": {"username": "ololo"}
+    },
+    {
+      "name": "kelvin-sign-inside-api-key",
+      "operation": "json",
+      "input": {"API_\u212aey": "synthetic"},
+      "output": {"API_\u212aey": "[REDACTED]"}
+    },
+    {
+      "name": "long-s-inside-password-key",
+      "operation": "json",
+      "input": {"pa\u017fsword": "synthetic"},
+      "output": {"pa\u017fsword": "[REDACTED]"}
+    }
+  ]
+}
