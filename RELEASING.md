@@ -46,10 +46,21 @@ git push origin v0.2.0
 ```
 
 Create a GitHub release from the tag and paste that version's changelog
-section as the release notes. Publishing the release starts the provenance
-workflow, which attaches a source archive and a SLSA attestation to it. If a
-release was published before that workflow existed, run it by hand from the
-Actions tab with the tag as its input.
+section as the release notes.
+
+Pushing the tag starts the provenance workflow, which attaches a source archive
+and a SLSA attestation to the release, creating a placeholder release if the
+tag arrives first. The run has to happen on the tag ref for the attestation to
+record the tag, so a release whose tag predates this workflow cannot get one:
+`v0.1.0` has no attestation for that reason.
+
+A consumer checks a release with:
+
+```text
+slsa-verifier verify-artifact go-masker-vX.Y.Z.tar.gz \
+  --provenance-path go-masker-vX.Y.Z.tar.gz.intoto.jsonl \
+  --source-uri github.com/icntswm/go-masker --source-tag vX.Y.Z
+```
 
 ## After tagging
 

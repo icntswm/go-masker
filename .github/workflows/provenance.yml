@@ -6,10 +6,13 @@
 # anyone who takes the source archive instead of `go get`.
 name: Release provenance
 
+# Triggered by the tag rather than by the release event, so the run happens on
+# the tag ref: the attestation then records the tag, and `slsa-verifier
+# --source-tag` can check it. A run started any other way records whatever ref
+# it ran on, which is not what a consumer wants to verify against.
 on:
-  release:
-    types: [published]
-  # Lets provenance be attached to a tag that was released earlier.
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
@@ -32,7 +35,7 @@ jobs:
     steps:
       - name: Resolve the tag
         id: tag
-        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -57,7 +60,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
-        run: gh release upload "${TAG}" "go-masker-${TAG}.tar.gz" --clobber
+        run: |
+          set -euo pipefail
+          # The tag is pushed before the release is written by hand, so create
+          # a placeholder if it is not there yet; real notes replace it.
+          gh release view "${TAG}" >/dev/null 2>&1 ||             gh release create "${TAG}" --title "${TAG}" --notes "See CHANGELOG.md."
+          gh release upload "${TAG}" "go-masker-${TAG}.tar.gz" --clobber
 
   provenance:
     name: Generate provenance
