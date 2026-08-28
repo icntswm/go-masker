@@ -1064,6 +1064,9 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 		{name: "quote", key: `key="value"`},
 		{name: "backslash", key: `key\path`},
 		{name: "long_multibyte", key: strings.Repeat("ключ", 200)},
+		{name: "long_trailing_backslash", key: strings.Repeat("a", 254) + `\`},
+		{name: "long_quoted", key: strings.Repeat(`a"`, 200)},
+		{name: "long_all_escaped", key: strings.Repeat("\u2028", 200)},
 		{name: "printable_unicode", key: "ключ"},
 	}
 
@@ -1086,6 +1089,20 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 			// not end a line, but it does end a logfmt value.
 			switch field := masked.Field; {
 			case strings.HasSuffix(field, "...(truncated)"):
+				// A truncated diagnostic must still be well formed: a cut that
+				// lands inside an escape sequence or before the closing quote
+				// produces exactly the broken value the escaping prevents.
+				body := strings.TrimSuffix(field, "...(truncated)")
+				if strings.HasPrefix(body, `"`) {
+					unquoted, unquoteErr := strconv.Unquote(body)
+					if unquoteErr != nil {
+						t.Fatalf("truncated diagnostic is not a valid quoted string: %q", body)
+					}
+					body = unquoted
+				}
+				if !strings.HasPrefix(testCase.key, body) {
+					t.Fatalf("truncated diagnostic is not a prefix of the key: %q", body)
+				}
 			case field == testCase.key:
 				if strings.ContainsAny(field, "\"\\") {
 					t.Fatalf("raw delimiter left in the diagnostic: %q", message)
@@ -1102,7 +1119,9 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 			if !utf8.ValidString(message) {
 				t.Fatalf("message is not valid UTF-8: %q", message)
 			}
-			if len(masked.Path) > maxDiagnosticLen+len("...(truncated)") {
+			// Escaping expands a rune to at most six bytes, so the escaped
+			// form is longer than the input bound but still bounded.
+			if limit := 6*maxDiagnosticLen + len(`""...(truncated)`); len(masked.Path) > limit {
 				t.Fatalf("path was not truncated: %d bytes", len(masked.Path))
 			}
 		})

@@ -151,7 +151,9 @@ func (e *MaskErrors) Unwrap() []error {
 }
 
 // maxDiagnosticLen bounds how much of a caller-supplied key or path a
-// diagnostic may carry.
+// diagnostic may carry. The bound is on the original text: escaping expands a
+// rune to at most six bytes, so an escaped diagnostic is longer than this,
+// and still bounded.
 const maxDiagnosticLen = 256
 
 // safeDiagnostic makes a key or path safe to write into a log line. Keys come
@@ -171,28 +173,38 @@ func safeDiagnostic(value string) string {
 	if value == "" {
 		return ""
 	}
-	needsEscape := !utf8.ValidString(value)
-	if !needsEscape {
-		for _, r := range value {
-			if !strconv.IsPrint(r) || r == '"' || r == '\\' {
-				needsEscape = true
-				break
-			}
-		}
-	}
-	if needsEscape {
-		value = strconv.Quote(value)
-	}
-	if len(value) > maxDiagnosticLen {
-		// Cut on a rune boundary: a byte-sliced key would put invalid UTF-8
-		// into the message the escaping above was meant to prevent.
+	// Truncate before escaping, never after: cutting quoted text can slice an
+	// escape sequence in half or drop the closing quote, which is the kind of
+	// malformed value the escaping exists to prevent. Cut on a rune boundary
+	// so the remainder stays valid UTF-8.
+	truncated := len(value) > maxDiagnosticLen
+	if truncated {
 		cut := maxDiagnosticLen
 		for cut > 0 && !utf8.RuneStart(value[cut]) {
 			cut--
 		}
-		value = value[:cut] + "...(truncated)"
+		value = value[:cut]
+	}
+	if needsQuoting(value) {
+		value = strconv.Quote(value)
+	}
+	if truncated {
+		value += "...(truncated)"
 	}
 	return value
+}
+
+// needsQuoting reports whether strconv.Quote would rewrite the value.
+func needsQuoting(value string) bool {
+	if !utf8.ValidString(value) {
+		return true
+	}
+	for _, r := range value {
+		if !strconv.IsPrint(r) || r == '"' || r == '\\' {
+			return true
+		}
+	}
+	return false
 }
 
 func maskError(code ErrorCode, operation, path string) *MaskError {
