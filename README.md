@@ -331,7 +331,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 4,985 lines of tests against 3,494 lines
+listed rather than asserted. There are 5,241 lines of tests against 3,658 lines
 of shipped code.
 
 | | |
