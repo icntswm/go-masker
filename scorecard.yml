@@ -1,0 +1,13 @@
+# Context for Scorecard results. Annotations explain a score, they do not
+# change it: see https://github.com/ossf/scorecard/blob/main/config/README.md
+annotations:
+  - checks:
+      - pinned-dependencies
+    reasons:
+      # Every action is pinned by commit SHA except the SLSA provenance
+      # generator in .github/workflows/provenance.yml. That one cannot be:
+      # it proves its own identity by tag, the attestation records the
+      # builder as generator_generic_slsa3.yml@refs/tags/vX.Y.Z, and
+      # slsa-verifier checks that. A SHA reference would make every published
+      # attestation fail to verify.
+      - reason: not-supported

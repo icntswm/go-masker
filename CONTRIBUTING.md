@@ -65,7 +65,10 @@ a CI run cannot diverge:
 
 Two more workflows run beside these. `CodeQL` looks for exploitable patterns
 rather than style, and `Scorecard` scores the repository rather than the code.
-Both report into the Security tab.
+Both report into the Security tab. `scorecard.yml` at the repository root
+explains the one score that cannot be raised: the SLSA generator is referenced
+by tag because it proves its own identity that way, so the pinned-dependencies
+check stops at 8.
 
 `main` is protected: it cannot be force-pushed or deleted, history stays
 linear, and a merge waits for the tests, the matrix, the linter, the
