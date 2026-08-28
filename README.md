@@ -352,11 +352,12 @@ produces byte-identical output.
 
 ## How this was built
 
-This library was written with AI assistance. Everything above is how that is
-kept honest: a change has to survive the same suite on every supported Go
-release before it ships. Provenance is not a substitute for review - the
-maintainer answers for what is here regardless of how it was produced, and you
-should read it the way you would read any dependency that handles secrets.
+This library was written with AI assistance, using Claude and OpenAI's Codex.
+Everything above is how that is kept honest: a change has to survive the same
+suite on every supported Go release before it ships. Provenance is not a
+substitute for review - the maintainer answers for what is here regardless of
+how it was produced, and you should read it the way you would read any
+dependency that handles secrets.
 
 ## Performance
 
