@@ -8,7 +8,7 @@
 | Go | go1.23.1 (cross-version results in the last section) |
 | Date | 2026-08-28 |
 | Benchmark revision | `3f00cbb` |
-| Verification revision | `b8f2268` |
+| Verification revision | `da170b9` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
 
@@ -99,7 +99,7 @@ of magnitude, from a single field to 10,000 records.
 
 ## Verified Go versions
 
-All checks below were run locally at `b8f2268`, where coverage is 82.8 % for
+All checks below were run locally at `da170b9`, where coverage is 82.8 % for
 the root package and 90.7 % for `httpmask`. The benchmark numbers above come
 from `3f00cbb`; the commits since then changed an error path and the tests, not
 anything a benchmark measures.
