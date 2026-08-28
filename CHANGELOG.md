@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
+## [0.1.1] - 2026-08-28
+
+No change to the library: the shipped code is identical to `v0.1.0`. This
+release exists so that the supply-chain work around it has something to apply
+to.
+
+### Changed
+
+- Every GitHub Action is pinned by commit SHA rather than by tag, so a moved
+  tag cannot change what CI executes.
+- `main` is protected: no force pushes, no deletion, linear history, and a
+  merge waits for the tests, the matrix, the linter, the vulnerability scan
+  and CodeQL.
+- CI runs CodeQL, and publishes an OpenSSF Scorecard analysis.
+- A release now carries a source archive and a SLSA attestation, so the
+  archive can be traced to the workflow and the tag that produced it. The
+  attestation is verified with `slsa-verifier`; see RELEASING.md.
+
 ## [0.1.0] - 2026-08-28
 
 First tagged release.
@@ -110,4 +128,5 @@ First tagged release.
 - Settled the public module path `github.com/icntswm/go-masker` and added
   release, contribution and agent-facing documentation.
 
+[0.1.1]: https://github.com/icntswm/go-masker/releases/tag/v0.1.1
 [0.1.0]: https://github.com/icntswm/go-masker/releases/tag/v0.1.0
