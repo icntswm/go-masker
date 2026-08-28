@@ -158,13 +158,15 @@ const maxDiagnosticLen = 256
 // from the masked document, so they are attacker-controlled: a newline in one
 // would otherwise split the record and let a forged entry be injected, and a
 // bidi override or a U+2028 line separator can make a record render as
-// something it is not. Anything unprintable is escaped, printable text is left
-// readable, and the result is truncated so one oversized key cannot dominate
-// the output.
+// something it is not, and a bare quote or backslash ends a logfmt value early.
+// Anything of that kind is escaped, printable text is left readable, and the
+// result is truncated so one oversized key cannot dominate the output.
 //
-// The test is strconv.IsPrint because that is exactly the set strconv.Quote
-// rewrites: asking "would quoting change this?" cannot drift away from the
-// quoting itself, the way a hand-written list of control ranges does.
+// The test asks "would quoting change this?", which cannot drift away from the
+// quoting itself the way a hand-written list of control ranges does. That is
+// every unprintable rune, plus the quote and the backslash: both are printable
+// but Quote rewrites them anyway, and either one loose in a value can break a
+// logfmt or JSON-shaped record.
 func safeDiagnostic(value string) string {
 	if value == "" {
 		return ""
@@ -172,7 +174,7 @@ func safeDiagnostic(value string) string {
 	needsEscape := !utf8.ValidString(value)
 	if !needsEscape {
 		for _, r := range value {
-			if !strconv.IsPrint(r) {
+			if !strconv.IsPrint(r) || r == '"' || r == '\\' {
 				needsEscape = true
 				break
 			}

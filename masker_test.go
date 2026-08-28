@@ -1061,6 +1061,8 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 		{name: "paragraph_separator", key: "evil\u2029FATAL forged log entry"},
 		{name: "bidi_override", key: "evil\u202eFATAL forged log entry"},
 		{name: "zero_width", key: "evil\u200bFATAL forged log entry"},
+		{name: "quote", key: `key="value"`},
+		{name: "backslash", key: `key\path`},
 		{name: "long_multibyte", key: strings.Repeat("ключ", 200)},
 		{name: "printable_unicode", key: "ключ"},
 	}
@@ -1076,6 +1078,25 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 			for _, r := range message {
 				if !strconv.IsPrint(r) && r != ' ' {
 					t.Fatalf("unprintable %U reached the message: %q", r, message)
+				}
+			}
+			// A diagnostic is either the key verbatim, or a quoted form that
+			// unquotes back to it. Anything else means the escaping mangled the
+			// value or let a delimiter through. A bare quote or backslash does
+			// not end a line, but it does end a logfmt value.
+			switch field := masked.Field; {
+			case strings.HasSuffix(field, "...(truncated)"):
+			case field == testCase.key:
+				if strings.ContainsAny(field, "\"\\") {
+					t.Fatalf("raw delimiter left in the diagnostic: %q", message)
+				}
+			default:
+				unquoted, unquoteErr := strconv.Unquote(field)
+				if unquoteErr != nil {
+					t.Fatalf("diagnostic is neither verbatim nor quoted: %q", field)
+				}
+				if unquoted != testCase.key {
+					t.Fatalf("quoted diagnostic does not round-trip: %q", field)
 				}
 			}
 			if !utf8.ValidString(message) {
