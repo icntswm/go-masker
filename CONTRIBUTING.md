@@ -65,7 +65,14 @@ a CI run cannot diverge:
 
 Two more workflows run beside these. `CodeQL` looks for exploitable patterns
 rather than style, and `Scorecard` scores the repository rather than the code.
-Both report into the Security tab, and neither gates a merge.
+Both report into the Security tab.
+
+`main` is protected: it cannot be force-pushed or deleted, history stays
+linear, and a merge waits for the tests, the matrix, the linter, the
+vulnerability scan and CodeQL. The fuzz jobs are deliberately not required -
+fuzzing is not deterministic, and a flaky gate teaches people to re-run rather
+than to read. Reviews are not required while the project has one maintainer,
+because nobody can approve their own pull request.
 
 ### Linting
 
