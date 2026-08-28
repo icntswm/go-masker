@@ -7,17 +7,19 @@
       "output": "https://%5BREDACTED%5D@example.com/p?keep=1&q=x&token=%5BREDACTED%5D&token=%5BREDACTED%5D"
     },
     {
-      "name": "fragment-preserved-by-default",
+      "name": "fragment-masked-by-default",
       "operation": "url",
       "input": "https://example.com/app/route#section-1",
-      "output": "https://example.com/app/route#section-1"
+      "output": "https://example.com/app/route#%5BREDACTED%5D"
     },
     {
-      "name": "paranoid-fragment-masked",
+      "name": "fragment-kept-on-request",
       "operation": "url",
-      "options": {"mask_fragment": true},
+      "options": {
+        "preserve_fragment": true
+      },
       "input": "https://example.com/app#route=a/b",
-      "output": "https://example.com/app#%5BREDACTED%5D"
+      "output": "https://example.com/app#route=a/b"
     },
     {
       "name": "opaque-url-fails-closed",

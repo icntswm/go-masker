@@ -50,9 +50,9 @@ values and field metadata remain reachable for that `Masker`'s lifetime. Code
 that constructs long-lived maskers for attacker-controlled streams of dynamic
 struct types should account for this retention risk.
 
-URLs preserve paths and fragments by default for compatibility. Userinfo is
-always fully redacted, and paranoid fragment masking is available through the
-HTTP adapter. Cookies and Set-Cookie headers are fully redacted in the MVP.
+URLs preserve paths by default for compatibility. Userinfo is always redacted,
+and so is the fragment unless the caller asks the HTTP adapter to keep it.
+Cookies and Set-Cookie headers are fully redacted in the MVP.
 
 `WithPreserveSafeTypes` retains safe primitive types but does not preserve
 struct types. Source strings may remain live while an operation is running;

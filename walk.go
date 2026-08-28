@@ -13,6 +13,8 @@ type walker struct {
 	masker       *Masker
 	active       map[identity]struct{}
 	activeStack  []identity
+	rootPath     string
+	pathStack    []string
 	nodes        int
 	indirections int
 	errs         []*MaskError
@@ -39,7 +41,7 @@ type omittedValue struct{}
 var omittedResult = omittedValue{}
 
 func (m *Masker) maskRoot(value any, source Source, root Field) (any, error) {
-	w := &walker{masker: m}
+	w := &walker{masker: m, rootPath: root.Path}
 	result := w.walk(reflect.ValueOf(value), root, 0, "")
 	if isOmitted(result) {
 		result = nil
@@ -100,7 +102,7 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		if isPanicError(err) {
 			code = CodePanic
 		}
-		return m.cfg.marker, true, aggregateErrors([]*MaskError{newFieldError(code, field, 0)})
+		return m.cfg.marker, true, aggregateErrors([]*MaskError{ruleFieldError(code, field, rule)})
 	}
 	return result, true, nil
 }
@@ -254,7 +256,7 @@ func (w *walker) apply(rule Rule, value reflect.Value, field Field) any {
 		if isPanicError(err) {
 			code = CodePanic
 		}
-		w.fail(code, field, 0)
+		addRuleError(&w.errs, code, w.locate(field), rule)
 		return w.masker.cfg.marker
 	}
 	return result
@@ -274,11 +276,16 @@ func (w *walker) mapValue(value reflect.Value, field Field, depth int) any {
 		key := iter.Key()
 		childValue := iter.Value()
 		keyText := key.String()
-		childField := Field{Key: keyText, Path: pathFor(field.Path, keyText), Source: field.Source}
+		childField := Field{Key: keyText, Source: field.Source}
+		if w.masker.cfg.needPaths {
+			childField.Path = pathFor(field.Path, keyText)
+		}
 		if childField.Source == SourceUnknown {
 			childField.Source = SourceMap
 		}
+		w.pushPath(keyText)
 		childResult := w.walk(childValue, childField, depth+1, "")
+		w.popPath()
 		if w.stop {
 			break
 		}
@@ -296,8 +303,13 @@ func (w *walker) arrayValue(value reflect.Value, field Field, depth int) any {
 		if w.stop {
 			break
 		}
-		childField := Field{Path: pathForIndex(field.Path, i), Source: field.Source}
+		childField := Field{Source: field.Source}
+		if w.masker.cfg.needPaths {
+			childField.Path = pathForIndex(field.Path, i)
+		}
+		w.pushPath(strconv.Itoa(i))
 		childResult := w.walk(value.Index(i), childField, depth+1, "")
+		w.popPath()
 		if w.stop {
 			break
 		}
@@ -318,8 +330,13 @@ func (w *walker) structValue(value reflect.Value, field Field, depth int) any {
 	result := make(map[string]any, w.resultCapacity(len(metadata.fields)))
 	for _, conflict := range metadata.conflicts {
 		for _, conflicting := range conflict.conflicting {
-			conflictField := Field{Key: conflict.field, Path: pathFor(field.Path, conflict.field), Source: SourceStruct}
+			conflictField := Field{Key: conflict.field, Source: SourceStruct}
+			if w.masker.cfg.needPaths {
+				conflictField.Path = pathFor(field.Path, conflict.field)
+			}
+			w.pushPath(conflict.field)
 			w.failConflict(conflictField, conflicting)
+			w.popPath()
 		}
 	}
 	for _, candidate := range metadata.fields {
@@ -333,8 +350,13 @@ func (w *walker) structValue(value reflect.Value, field Field, depth int) any {
 		if candidate.jsonOmit || candidate.maskTag == "omit" {
 			continue
 		}
-		childField := Field{Key: candidate.jsonName, Path: pathFor(field.Path, candidate.jsonName), Source: SourceStruct}
+		childField := Field{Key: candidate.jsonName, Source: SourceStruct}
+		if w.masker.cfg.needPaths {
+			childField.Path = pathFor(field.Path, candidate.jsonName)
+		}
+		w.pushPath(candidate.jsonName)
 		childResult := w.walk(childValue, childField, depth+1, candidate.maskTag)
+		w.popPath()
 		if !isOmitted(childResult) {
 			result[candidate.jsonName] = childResult
 		}
@@ -359,7 +381,9 @@ func (w *walker) flatScalarStructValue(value reflect.Value, field Field, depth i
 		if w.masker.cfg.needPaths {
 			childField.Path = pathFor(field.Path, candidate.jsonName)
 		}
-		childResult := w.walkFlatScalar(value.Field(candidate.index[0]), childField, depth+1, candidate, field.Path)
+		w.pushPath(candidate.jsonName)
+		childResult := w.walkFlatScalar(value.Field(candidate.index[0]), childField, depth+1, candidate)
+		w.popPath()
 		if w.stop {
 			break
 		}
@@ -370,8 +394,7 @@ func (w *walker) flatScalarStructValue(value reflect.Value, field Field, depth i
 	return result
 }
 
-func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, metadata structFieldMetadata, parentPath string) any {
-	errStart := len(w.errs)
+func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, metadata structFieldMetadata) any {
 	var result any
 	if depth > w.masker.cfg.maxDepth {
 		w.fail(CodeDepthLimit, field, depth)
@@ -385,14 +408,6 @@ func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, met
 			result = decisionResult
 		} else {
 			result = w.safeScalar(value)
-		}
-	}
-	if field.Path == "" && len(w.errs) > errStart {
-		path := pathFor(parentPath, field.Key)
-		for _, err := range w.errs[errStart:] {
-			if err != nil && err.Path == "" {
-				err.Path = path
-			}
 		}
 	}
 	return result
@@ -465,7 +480,47 @@ func safeScalar(value reflect.Value, preserveSafe bool, marker string) any {
 	}
 }
 
+// pushPath and popPath keep the segments of the current position. A policy that
+// never reads Field.Path makes building the string per node pure waste, so the
+// walker keeps the cheap stack and materializes a path only when a policy asks
+// for one or an error has to name a location.
+func (w *walker) pushPath(segment string) {
+	w.pathStack = append(w.pathStack, segment)
+}
+
+func (w *walker) popPath() {
+	w.pathStack = w.pathStack[:len(w.pathStack)-1]
+}
+
+func (w *walker) currentPath() string {
+	path := w.rootPath
+	if path == "" {
+		path = "$"
+	}
+	if len(w.pathStack) == 0 {
+		return path
+	}
+	var builder strings.Builder
+	builder.WriteString(path)
+	for _, segment := range w.pathStack {
+		builder.WriteByte('[')
+		builder.WriteString(segment)
+		builder.WriteByte(']')
+	}
+	return builder.String()
+}
+
+// locate fills in a path that was not built during the walk, so an error still
+// names the field it came from.
+func (w *walker) locate(field Field) Field {
+	if field.Path == "" {
+		field.Path = w.currentPath()
+	}
+	return field
+}
+
 func (w *walker) fail(code ErrorCode, field Field, depth int) {
+	field = w.locate(field)
 	if code == CodeDepthLimit || code == CodeNodeLimit {
 		if w.stop {
 			return
@@ -477,9 +532,24 @@ func (w *walker) fail(code ErrorCode, field Field, depth int) {
 	addFieldError(&w.errs, code, field, depth)
 }
 
+// ruleFieldError names the rule that failed, so a caller reading the log can
+// tell which of several configured rules produced the fallback value.
+func ruleFieldError(code ErrorCode, field Field, rule Rule) *MaskError {
+	err := newFieldError(code, field, 0)
+	err.Rule = safeDiagnostic(ruleName(rule))
+	return err
+}
+
+func addRuleError(errs *[]*MaskError, code ErrorCode, field Field, rule Rule) {
+	if len(*errs) >= maxMaskErrorsPerOperation {
+		return
+	}
+	addMaskError(errs, ruleFieldError(code, field, rule))
+}
+
 func newFieldError(code ErrorCode, field Field, depth int) *MaskError {
 	err := maskError(code, "mask", field.Path)
-	err.Field = field.Key
+	err.Field = safeDiagnostic(field.Key)
 	err.Depth = depth
 	return err
 }
@@ -504,9 +574,10 @@ func (w *walker) failConflict(field Field, conflicting string) {
 	if len(w.errs) >= maxMaskErrorsPerOperation {
 		return
 	}
+	field = w.locate(field)
 	err := maskError(CodeFieldConflict, "mask", field.Path)
-	err.Field = field.Key
-	err.ConflictingField = conflicting
+	err.Field = safeDiagnostic(field.Key)
+	err.ConflictingField = safeDiagnostic(conflicting)
 	addMaskError(&w.errs, err)
 }
 

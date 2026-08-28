@@ -55,10 +55,13 @@ func (m *Masker) MaskString(value string, rule Rule) (result string, err error) 
 	defer m.recoverString(&result, &err)
 	result, err = applyRule(rule, RuleInput{Value: value, Kind: KindString, Redaction: m.cfg.marker})
 	if err != nil {
+		code := CodeRuleFailure
 		if isPanicError(err) {
-			return m.cfg.marker, maskError(CodePanic, "mask_string", "$")
+			code = CodePanic
 		}
-		return m.cfg.marker, maskError(CodeRuleFailure, "mask_string", "$")
+		failure := maskError(code, "mask_string", "$")
+		failure.Rule = safeDiagnostic(ruleName(rule))
+		return m.cfg.marker, failure
 	}
 	return result, nil
 }

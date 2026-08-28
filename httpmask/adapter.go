@@ -10,7 +10,7 @@ import (
 	"github.com/icntswm/go-masker"
 )
 
-type config struct{ maskFragment bool }
+type config struct{ preserveFragment bool }
 
 // Option configures an HTTP masking Adapter. The option type is intentionally
 // closed; callers use the exported With* constructors.
@@ -49,10 +49,15 @@ func New(core *masker.Masker, opts ...Option) (*Adapter, error) {
 	return &Adapter{core: core, cfg: cfg, mark: mark}, nil
 }
 
-// WithMaskFragment enables full masking of URL fragments.
-func WithMaskFragment() Option {
+// WithPreserveFragment keeps the URL fragment intact.
+//
+// Fragments are redacted by default: an OAuth implicit-flow token lives in the
+// fragment, and a library that fails closed should not need an opt-in to keep
+// it out of a log. Use this option when the fragment carries client-side
+// routing state that a reader needs.
+func WithPreserveFragment() Option {
 	return func(cfg *config) error {
-		cfg.maskFragment = true
+		cfg.preserveFragment = true
 		return nil
 	}
 }
@@ -71,25 +76,35 @@ func (a *Adapter) Headers(src http.Header) (http.Header, error) {
 			Source: masker.SourceHeader,
 			Kind:   masker.KindString,
 		}
-		copied := make([]string, len(values))
-		for i, value := range values {
+		copied := make([]string, 0, len(values))
+		for _, value := range values {
 			if isCookie {
 				masked, err := a.core.MaskString(value, masker.FullRule())
 				if err != nil {
 					return http.Header{}, err
 				}
-				copied[i] = masked
+				copied = append(copied, masked)
 				continue
 			}
 			masked, err := a.core.MaskField(field, value)
 			if err != nil {
 				return http.Header{}, err
 			}
+			// A policy that omits the field asks for the value to disappear,
+			// not to be replaced by a marker.
+			if masked == nil {
+				continue
+			}
 			stringValue, ok := masked.(string)
 			if !ok {
 				return http.Header{}, fmt.Errorf("httpmask: invalid masked header result")
 			}
-			copied[i] = stringValue
+			copied = append(copied, stringValue)
+		}
+		// Dropping every value drops the header itself; an empty value list
+		// would still be serialized as a header with no values.
+		if len(copied) == 0 {
+			continue
 		}
 		result[key] = copied
 	}
@@ -120,10 +135,7 @@ func (a *Adapter) maskURL(result *url.URL) error {
 	}
 
 	if result.RawQuery == "" {
-		if a.cfg.maskFragment && result.Fragment != "" {
-			result.Fragment = a.marker()
-			result.RawFragment = ""
-		}
+		a.maskFragment(result)
 		return nil
 	}
 
@@ -132,15 +144,27 @@ func (a *Adapter) maskURL(result *url.URL) error {
 		return err
 	}
 	result.RawQuery = query
-	if a.cfg.maskFragment && result.Fragment != "" {
-		result.Fragment = a.marker()
-		result.RawFragment = ""
-	}
+	a.maskFragment(result)
 	return nil
 }
 
+func (a *Adapter) maskFragment(result *url.URL) {
+	if a.cfg.preserveFragment || result.Fragment == "" {
+		return
+	}
+	result.Fragment = a.marker()
+	result.RawFragment = ""
+}
+
+// maxQueryPrealloc bounds the query pair slice preallocated from the separator
+// count.
+const maxQueryPrealloc = 1024
+
 func (a *Adapter) maskQuery(raw string) (string, error) {
-	pairs := make([]queryPair, 0, strings.Count(raw, "&")+1)
+	// One separator does not imply one pair: a query of nothing but "&" would
+	// preallocate a pair per byte, turning a few megabytes of input into tens
+	// of megabytes of scratch. Start from a bounded hint and let append grow.
+	pairs := make([]queryPair, 0, min(strings.Count(raw, "&")+1, maxQueryPrealloc))
 	remaining := raw
 	for remaining != "" {
 		var part string
@@ -193,6 +217,11 @@ func (a *Adapter) maskQuery(raw string) (string, error) {
 			masked, maskErr := a.core.MaskField(field, pairs[index].value)
 			if maskErr != nil {
 				return "", maskErr
+			}
+			// An omitted parameter is dropped from the query, matching how an
+			// omitted field disappears from a masked document.
+			if masked == nil {
+				continue
 			}
 			maskedValue, ok := masked.(string)
 			if !ok {

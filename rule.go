@@ -63,6 +63,20 @@ func isNilRule(rule Rule) bool {
 	}
 }
 
+// ruleName reports a rule's name for diagnostics. Name comes from caller code,
+// so a panic there must not escape into the masking path.
+func ruleName(rule Rule) (name string) {
+	if isNilRule(rule) {
+		return ""
+	}
+	defer func() {
+		if recover() != nil {
+			name = ""
+		}
+	}()
+	return rule.Name()
+}
+
 func applyRule(rule Rule, input RuleInput) (result string, err error) {
 	if isNilRule(rule) {
 		return "", fmt.Errorf("%w: nil rule", errorSentinels[CodeRuleFailure])

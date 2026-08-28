@@ -3,7 +3,9 @@ package masker
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ErrorCode identifies a safe, non-sensitive masking failure category.
@@ -148,8 +150,45 @@ func (e *MaskErrors) Unwrap() []error {
 	return result
 }
 
+// maxDiagnosticLen bounds how much of a caller-supplied key or path a
+// diagnostic may carry.
+const maxDiagnosticLen = 256
+
+// safeDiagnostic makes a key or path safe to write into a log line. Keys come
+// from the masked document, so they are attacker-controlled: a newline in one
+// would otherwise split the record and let a forged entry be injected. Control
+// characters and invalid UTF-8 are escaped, printable text is left readable,
+// and the result is truncated so one oversized key cannot dominate the output.
+func safeDiagnostic(value string) string {
+	if value == "" {
+		return ""
+	}
+	needsEscape := !utf8.ValidString(value)
+	if !needsEscape {
+		for _, r := range value {
+			if r < 0x20 || r == 0x7f {
+				needsEscape = true
+				break
+			}
+		}
+	}
+	if needsEscape {
+		value = strconv.Quote(value)
+	}
+	if len(value) > maxDiagnosticLen {
+		// Cut on a rune boundary: a byte-sliced key would put invalid UTF-8
+		// into the message the escaping above was meant to prevent.
+		cut := maxDiagnosticLen
+		for cut > 0 && !utf8.RuneStart(value[cut]) {
+			cut--
+		}
+		value = value[:cut] + "...(truncated)"
+	}
+	return value
+}
+
 func maskError(code ErrorCode, operation, path string) *MaskError {
-	return &MaskError{Code: code, Operation: operation, Path: path}
+	return &MaskError{Code: code, Operation: operation, Path: safeDiagnostic(path)}
 }
 
 func addMaskError(errs *[]*MaskError, err *MaskError) {

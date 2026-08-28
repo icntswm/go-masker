@@ -217,9 +217,14 @@ type Field struct {
 }
 ```
 
-`Field.Path` is a human-readable hybrid path, such as
-`$[user].orders[0][token]`. It is diagnostic context only; it is not RFC 6901
+`Field.Path` is a human-readable bracketed path, such as
+`$[user][orders][0][token]`. It is diagnostic context only; it is not RFC 6901
 and is not a stable machine-readable matching protocol.
+
+A policy that never reads `Field.Path` — a `KeyPolicy`, or a `Chain` of them —
+lets the walkers skip building the string per node and keep only the cheap
+stack of segments. An error still names its exact location: the path is
+materialized at the point the error is recorded.
 
 ### 5.2 Policy
 
@@ -592,7 +597,7 @@ type Adapter struct{}
 type Option func(*config) error
 
 func New(core *masker.Masker, opts ...Option) (*Adapter, error)
-func WithMaskFragment() Option
+func WithPreserveFragment() Option
 
 func (a *Adapter) Headers(src http.Header) (http.Header, error)
 func (a *Adapter) URL(src *url.URL) (*url.URL, error)
@@ -607,15 +612,21 @@ Header behavior:
   the selected policy rule is partial; this is intentional paranoid
   behavior for transport metadata;
 - `Cookie` and `Set-Cookie` receive full redaction;
+- a policy `Decision{Omit: true}` drops the value; a header whose every value
+  is omitted is dropped with it, because an empty value list would still be
+  serialized as a header;
 - `CookieNamePolicy` is deferred.
 
 URL behavior:
 
 - query parameters are processed through Policy with `SourceURLQuery`;
 - duplicate query values are preserved as repeated values;
+- a policy `Decision{Omit: true}` drops the parameter from the query;
 - userinfo is always fully redacted;
-- fragment is preserved by default for compatibility with client-side routing;
-- `WithMaskFragment()` enables paranoid fragment masking;
+- the fragment is redacted by default, because an OAuth implicit-flow token
+  arrives there;
+- `WithPreserveFragment()` keeps the fragment when it carries client-side
+  routing state a reader needs;
 - path is preserved by default;
 - query output is rebuilt by the adapter's one-pass query parser/writer; keys
   are sorted and escaping may be normalized (`+` may replace `%20`), matching
@@ -668,7 +679,7 @@ decisions, including:
 - struct tags and precedence;
 - nested map/slice/struct input;
 - cycle and depth fallback;
-- headers, cookies, URLs, and paranoid fragments;
+- headers, cookies, URLs, and fragment handling;
 - invalid input and root redaction.
 
 Golden files must never contain real credentials or production personal data.
@@ -758,8 +769,8 @@ fall back to the original value when masking returns an error.
 - A `Masker` metadata cache retains encountered struct types and immutable
   field metadata for the lifetime of that `Masker`.
 - Integer map keys are rejected because conversion can create collisions.
-- Fragment is preserved by default; paranoid mode is required for stricter URL
-  logging.
+- The fragment is redacted by default; keeping client-side routing state
+  visible requires an opt-in.
 - Custom Rule output can be checked for format and validity, but not for
   semantic absence of secrets.
 - Rune-safe masking guarantees valid Unicode boundaries but does not guarantee

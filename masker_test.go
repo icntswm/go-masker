@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 func newTestMasker(t *testing.T, opts ...Option) *Masker {
@@ -897,4 +898,188 @@ func TestMaskerConcurrentUse(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestRuleFailureNamesTheRule(t *testing.T) {
+	failing, err := NewRule("tenant-id", func(RuleInput) (string, error) {
+		return "", errors.New("rule is broken")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	panicking, err := NewRule("panicking", func(RuleInput) (string, error) {
+		panic("rule exploded")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ruleFor := func(rule Rule) Policy {
+		return PolicyFunc(func(field Field) (Decision, error) {
+			if field.Key == "token" {
+				return Decision{Rule: rule}, nil
+			}
+			return Decision{}, nil
+		})
+	}
+
+	// The reflection walker, the JSON walkers and MaskString each report a rule
+	// failure through their own path; all of them must name the rule.
+	cases := []struct {
+		name string
+		rule Rule
+		run  func(*Masker) error
+	}{
+		{name: "any", rule: failing, run: func(m *Masker) error {
+			_, err := m.MaskAny(map[string]any{"token": "secret"})
+			return err
+		}},
+		{name: "json", rule: failing, run: func(m *Masker) error {
+			_, err := m.MaskJSON([]byte(`{"token":"secret"}`))
+			return err
+		}},
+		{name: "json_reader", rule: failing, run: func(m *Masker) error {
+			_, err := m.MaskJSONReader(strings.NewReader(`{"token":"secret"}`))
+			return err
+		}},
+		{name: "field", rule: failing, run: func(m *Masker) error {
+			_, err := m.MaskField(Field{Key: "token", Kind: KindString}, "secret")
+			return err
+		}},
+		{name: "panic", rule: panicking, run: func(m *Masker) error {
+			_, err := m.MaskAny(map[string]any{"token": "secret"})
+			return err
+		}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			m, err := New(ruleFor(testCase.rule))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = testCase.run(m)
+			var masked *MaskError
+			if !errors.As(err, &masked) {
+				t.Fatalf("expected a MaskError, got %v", err)
+			}
+			if masked.Rule != testCase.rule.Name() {
+				t.Fatalf("rule not named: %#v", masked)
+			}
+			if !strings.Contains(masked.Error(), "rule="+testCase.rule.Name()) {
+				t.Fatalf("rule missing from message: %q", masked.Error())
+			}
+		})
+	}
+
+	m, err := New(DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.MaskString("secret", failing)
+	var masked *MaskError
+	if !errors.As(err, &masked) || masked.Rule != "tenant-id" {
+		t.Fatalf("MaskString did not name the rule: %v", err)
+	}
+}
+
+func TestErrorPathsMatchWhetherOrNotPolicyNeedsPaths(t *testing.T) {
+	broken, err := NewRule("broken", func(RuleInput) (string, error) {
+		return "", errors.New("rule is broken")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A KeyPolicy never reads Field.Path, so the walker skips building one.
+	// Errors must still name the exact location.
+	keyPolicy, err := NewKeyPolicy(Binding{Keys: []string{"token"}, Rule: broken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pathPolicy := PolicyFunc(func(field Field) (Decision, error) {
+		if field.Key == "token" {
+			return Decision{Rule: broken}, nil
+		}
+		return Decision{}, nil
+	})
+
+	type inner struct {
+		Token string `json:"token"`
+	}
+	type outer struct {
+		Items []map[string]inner `json:"items"`
+	}
+	value := outer{Items: []map[string]inner{{"account": {Token: "secret"}}}}
+
+	paths := func(policy Policy) []string {
+		m, newErr := New(policy)
+		if newErr != nil {
+			t.Fatal(newErr)
+		}
+		_, maskErr := m.MaskAny(value)
+		var list *MaskErrors
+		if !errors.As(maskErr, &list) {
+			t.Fatalf("expected MaskErrors, got %v", maskErr)
+		}
+		collected := make([]string, 0, len(list.Items))
+		for _, item := range list.Items {
+			collected = append(collected, item.Path)
+		}
+		return collected
+	}
+
+	lazy, eager := paths(keyPolicy), paths(pathPolicy)
+	if !reflect.DeepEqual(lazy, eager) {
+		t.Fatalf("paths diverge: key policy %q, path policy %q", lazy, eager)
+	}
+	if len(lazy) == 0 || lazy[0] != "$[items][0][account][token]" {
+		t.Fatalf("unexpected error path: %q", lazy)
+	}
+}
+
+func TestDiagnosticsAreSafeToLog(t *testing.T) {
+	m, err := New(PolicyFunc(func(field Field) (Decision, error) {
+		return Decision{}, errors.New("policy is broken")
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name string
+		key  string
+	}{
+		{name: "newline", key: "evil\nFATAL forged log entry"},
+		{name: "control", key: "tab\there"},
+		{name: "long_multibyte", key: strings.Repeat("ключ", 200)},
+		{name: "printable_unicode", key: "ключ"},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := m.MaskValue(testCase.key, "secret")
+			var masked *MaskError
+			if !errors.As(err, &masked) {
+				t.Fatalf("expected a MaskError, got %v", err)
+			}
+			message := masked.Error()
+			if strings.ContainsAny(message, "\n\r\t") {
+				t.Fatalf("control character reached the message: %q", message)
+			}
+			if !utf8.ValidString(message) {
+				t.Fatalf("message is not valid UTF-8: %q", message)
+			}
+			if len(masked.Path) > maxDiagnosticLen+len("...(truncated)") {
+				t.Fatalf("path was not truncated: %d bytes", len(masked.Path))
+			}
+		})
+	}
+
+	// Printable text must stay readable rather than being escaped away.
+	_, err = m.MaskValue("ключ", "secret")
+	var masked *MaskError
+	if !errors.As(err, &masked) || !strings.Contains(masked.Error(), "ключ") {
+		t.Fatalf("printable Unicode was mangled: %v", err)
+	}
 }

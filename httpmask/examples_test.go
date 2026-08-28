@@ -35,7 +35,7 @@ func ExampleAdapter_URLString() {
 	if err != nil {
 		panic(err)
 	}
-	adapter, err := httpmask.New(core, httpmask.WithMaskFragment())
+	adapter, err := httpmask.New(core)
 	if err != nil {
 		panic(err)
 	}
@@ -59,7 +59,7 @@ func ExampleAdapter_URL() {
 	}
 
 	// The parsed form avoids a reparse when the caller already holds a URL.
-	// Path and fragment are preserved by default; userinfo is always redacted.
+	// The path is preserved; userinfo and the fragment are redacted.
 	src, err := url.Parse("https://alice:synthetic-password@example.com/orders/42?api_key=synthetic-key&page=2#details")
 	if err != nil {
 		panic(err)
@@ -72,11 +72,11 @@ func ExampleAdapter_URL() {
 	fmt.Println(src) // the input URL is never modified
 
 	// Output:
-	// https://%5BREDACTED%5D@example.com/orders/42?api_key=%5BREDACTED%5D&page=2#details
+	// https://%5BREDACTED%5D@example.com/orders/42?api_key=%5BREDACTED%5D&page=2#%5BREDACTED%5D
 	// https://alice:synthetic-password@example.com/orders/42?api_key=synthetic-key&page=2#details
 }
 
-func ExampleWithMaskFragment() {
+func ExampleWithPreserveFragment() {
 	core, err := masker.New(masker.DefaultPolicy())
 	if err != nil {
 		panic(err)
@@ -85,26 +85,28 @@ func ExampleWithMaskFragment() {
 	if err != nil {
 		panic(err)
 	}
-	paranoid, err := httpmask.New(core, httpmask.WithMaskFragment())
+	keepRouting, err := httpmask.New(core, httpmask.WithPreserveFragment())
 	if err != nil {
 		panic(err)
 	}
 
+	// An OAuth implicit-flow token lives in the fragment, so it is redacted
+	// unless the caller asks for the fragment back.
 	const raw = "https://example.com/app#access_token=synthetic-token"
-	kept, err := plain.URLString(raw)
+	redacted, err := plain.URLString(raw)
 	if err != nil {
 		panic(err)
 	}
-	hidden, err := paranoid.URLString(raw)
+	kept, err := keepRouting.URLString(raw)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(redacted)
 	fmt.Println(kept)
-	fmt.Println(hidden)
 
 	// Output:
-	// https://example.com/app#access_token=synthetic-token
 	// https://example.com/app#%5BREDACTED%5D
+	// https://example.com/app#access_token=synthetic-token
 }
 
 func ExampleAdapter_Headers_cookies() {

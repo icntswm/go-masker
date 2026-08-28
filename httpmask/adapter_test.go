@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -60,7 +61,7 @@ func TestHeadersAndURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := New(core, WithMaskFragment())
+	adapter, err := New(core)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +107,7 @@ func TestURLStringMatchesURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := New(core, WithMaskFragment())
+	adapter, err := New(core)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,8 +222,8 @@ func TestURLPreservesDuplicatesOrderingAndInput(t *testing.T) {
 	if _, ok := masked.User.Password(); ok {
 		t.Fatal("masked userinfo retained a password")
 	}
-	if masked.Fragment != "fragment" {
-		t.Fatalf("fragment changed without opt-in: %q", masked.Fragment)
+	if masked.Fragment != masker.DefaultRedactionMarker {
+		t.Fatalf("fragment was not masked: %q", masked.Fragment)
 	}
 	if source.String() != original {
 		t.Fatalf("source URL was mutated: got %q want %q", source.String(), original)
@@ -402,5 +403,73 @@ func TestURLScalarRuleFailuresFailClosed(t *testing.T) {
 				t.Fatalf("failure did not preserve marker/input: masked=%#v source=%#v", masked, source)
 			}
 		})
+	}
+}
+
+func TestOmitDropsHeadersAndQueryParameters(t *testing.T) {
+	omitSecret := masker.PolicyFunc(func(field masker.Field) (masker.Decision, error) {
+		if strings.EqualFold(field.Key, "X-Secret") || field.Key == "drop" {
+			return masker.Decision{Omit: true}, nil
+		}
+		return masker.Decision{}, nil
+	})
+	core, err := masker.New(omitSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := New(core)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headers, err := adapter.Headers(http.Header{
+		"X-Secret": {"one", "two"},
+		"X-Trace":  {"trace-id"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, present := headers["X-Secret"]; present {
+		t.Fatalf("omitted header was kept: %#v", headers)
+	}
+	if got := headers.Get("X-Trace"); got != "trace-id" {
+		t.Fatalf("unexpected surviving header: %q", got)
+	}
+
+	masked, err := adapter.URLString("https://example.com/?drop=secret&keep=value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if masked != "https://example.com/?keep=value" {
+		t.Fatalf("omitted query parameter was kept: %q", masked)
+	}
+}
+
+func TestMaskQueryDoesNotAmplifySeparators(t *testing.T) {
+	core, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := New(core)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A separator-only query carries no pairs at all, so the scratch slice must
+	// not scale with the input length.
+	raw := strings.Repeat("&", 1<<20)
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	masked, err := adapter.maskQuery(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReadMemStats(&after)
+	if masked != "" {
+		t.Fatalf("unexpected query output: %q", masked)
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > uint64(len(raw)) {
+		t.Fatalf("query masking allocated %d bytes for %d bytes of separators", allocated, len(raw))
 	}
 }

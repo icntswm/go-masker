@@ -822,12 +822,12 @@ func matrixURL(shape string, size int, id string) string {
 	}
 }
 
-func prepareURL(raw string, maskFragment bool) func(testing.TB, *masker.Masker) func() (any, error) {
+func prepareURL(raw string, preserveFragment bool) func(testing.TB, *masker.Masker) func() (any, error) {
 	return func(tb testing.TB, m *masker.Masker) func() (any, error) {
 		tb.Helper()
 		options := []httpmask.Option(nil)
-		if maskFragment {
-			options = append(options, httpmask.WithMaskFragment())
+		if preserveFragment {
+			options = append(options, httpmask.WithPreserveFragment())
 		}
 		adapter, err := httpmask.New(m, options...)
 		if err != nil {

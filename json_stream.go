@@ -220,7 +220,7 @@ func (w *streamJSONWalker) decide(field Field, data []byte, start, scalarEnd int
 		if isPanicError(err) {
 			code = CodePanic
 		}
-		w.fail(code, field, 0)
+		addUniqueRuleError(&w.errs, code, field, decision.Rule)
 		*out = appendJSONString(*out, w.masker.cfg.marker)
 		return true, 0, false
 	}
@@ -756,8 +756,15 @@ func (w *streamJSONWalker) fail(code ErrorCode, field Field, depth int) {
 	addUniqueFieldError(&w.errs, code, field, depth)
 }
 
+func addUniqueRuleError(errs *[]*MaskError, code ErrorCode, field Field, rule Rule) {
+	addUnique(errs, ruleFieldError(code, field, rule))
+}
+
 func addUniqueFieldError(errs *[]*MaskError, code ErrorCode, field Field, depth int) {
-	err := newFieldError(code, field, depth)
+	addUnique(errs, newFieldError(code, field, depth))
+}
+
+func addUnique(errs *[]*MaskError, err *MaskError) {
 	for _, existing := range *errs {
 		if existing != nil && *existing == *err {
 			return

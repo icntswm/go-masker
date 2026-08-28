@@ -21,6 +21,15 @@ API may still change, and every such change is listed here.
 
 ### Changed
 
+- `httpmask` redacts the URL fragment by default. An OAuth implicit-flow token
+  arrives in the fragment, so a library that fails closed should not need an
+  opt-in to keep it out of a log. `WithMaskFragment` is replaced by
+  `WithPreserveFragment`, which keeps the fragment when it carries client-side
+  routing state a reader needs.
+- A policy `Decision{Omit: true}` now drops an HTTP header value or a query
+  parameter instead of failing the whole operation. A header whose every value
+  is omitted is dropped as well, because an empty value list would still be
+  serialized as a header.
 - Bounded reflection result preallocation and pointer dereference work by the
   configured node budget.
 - Added single-pass streaming JSON validation and depth/node enforcement.
@@ -37,9 +46,23 @@ API may still change, and every such change is listed here.
 - Widened linting beyond the golangci-lint defaults, covering error wrapping,
   exhaustive switches, unchecked type assertions and spelling.
 - Added a `govulncheck` job and ran every supported Go minor release in CI.
+- Built reflection paths lazily when the configured policy never reads
+  `Field.Path`, which removes about a third of the allocations on nested
+  documents masked through a `KeyPolicy`. Error paths are unchanged.
 
 ### Fixed
 
+- Escaped control characters and invalid UTF-8 in the key, path and field
+  names that appear in error messages. A key is attacker-controlled, so a
+  newline in one could previously split a log record and let a forged entry be
+  injected. Diagnostics are also truncated so one oversized key cannot dominate
+  the output.
+- Populated `MaskError.Rule` on every rule failure, so a caller can tell which
+  of several configured rules produced the fallback value. The field was
+  documented and formatted but never set.
+- Bounded the query pair buffer that `httpmask` sizes from the separator
+  count. A query of nothing but `&` turned four megabytes of input into a
+  hundred and twenty-eight megabytes of scratch.
 - Rejected malformed JSON object keys that previously could return the original
   unmasked value under a truncated key.
 - Replaced recursive skipped-value scanning with an iterative state machine to
@@ -64,6 +87,8 @@ API may still change, and every such change is listed here.
 
 ### Security
 
+- Closed a log-injection path through masked keys and paths, and made the URL
+  fragment redacted by default.
 - Closed a JSON logging leak where malformed object keys exposed the original
   secret with `err == nil`.
 - Added default masking for `x-api-key`, `x-auth-token`, and

@@ -134,7 +134,7 @@ func (w *jsonWalker) apply(rule Rule, value any, field Field) any {
 		if isPanicError(err) {
 			code = CodePanic
 		}
-		w.fail(code, field, 0)
+		addRuleError(&w.errs, code, field, rule)
 		return w.masker.cfg.marker
 	}
 	return result

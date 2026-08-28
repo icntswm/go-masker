@@ -26,7 +26,7 @@ Case schema:
   - `headers`: object of header names to value lists; compared exactly.
   - `url`: raw URL string masked via `URLString`; compared as a string.
 - `options` are optional: `max_depth`, `max_nodes`, `max_input_bytes` tune
-  the core masker, `mask_fragment` enables paranoid fragment masking.
+  the core masker, `preserve_fragment` keeps the URL fragment intact.
 - `error_code` asserts a sentinel category through `errors.Is`. Use
   `error_expected: true` when the adapter reports an untyped error.
 - On any failure the golden expectation is the safe fallback output.

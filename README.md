@@ -272,7 +272,7 @@ The `httpmask` adapter copies headers and URLs before applying the core policy:
 
 ```go
 core, err := masker.New(masker.DefaultPolicy())
-adapter, err := httpmask.New(core, httpmask.WithMaskFragment())
+adapter, err := httpmask.New(core)
 
 headers, err := adapter.Headers(http.Header{
 	"Authorization": {"Bearer secret"},
@@ -285,8 +285,8 @@ maskedURL, err := adapter.URLString(
 
 `Cookie` and `Set-Cookie` values and URL userinfo are always fully redacted.
 Sensitive query parameters use the core policy. Query keys are sorted and URL
-escaping may be normalized. URL fragments are preserved by default and can be
-masked with `WithMaskFragment`.
+escaping may be normalized. URL fragments are redacted by default, because an
+OAuth implicit-flow token arrives there; `WithPreserveFragment` keeps them.
 
 ## Errors and fail-closed behavior
 

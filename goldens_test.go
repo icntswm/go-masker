@@ -15,10 +15,10 @@ import (
 )
 
 type goldenOptions struct {
-	MaxDepth      *int   `json:"max_depth"`
-	MaxNodes      *int   `json:"max_nodes"`
-	MaxInputBytes *int64 `json:"max_input_bytes"`
-	MaskFragment  bool   `json:"mask_fragment"`
+	MaxDepth         *int   `json:"max_depth"`
+	MaxNodes         *int   `json:"max_nodes"`
+	MaxInputBytes    *int64 `json:"max_input_bytes"`
+	PreserveFragment bool   `json:"preserve_fragment"`
 }
 
 type goldenCase struct {
@@ -203,8 +203,8 @@ func newGoldenCore(t *testing.T, o goldenOptions) *masker.Masker {
 func newGoldenAdapter(t *testing.T, core *masker.Masker, o goldenOptions) *httpmask.Adapter {
 	t.Helper()
 	var opts []httpmask.Option
-	if o.MaskFragment {
-		opts = append(opts, httpmask.WithMaskFragment())
+	if o.PreserveFragment {
+		opts = append(opts, httpmask.WithPreserveFragment())
 	}
 	adapter, err := httpmask.New(core, opts...)
 	if err != nil {
