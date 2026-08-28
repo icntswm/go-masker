@@ -1,0 +1,77 @@
+# Attaches SLSA build provenance to a release, so a consumer can verify that
+# the archive was produced by this workflow from this commit rather than by
+# someone with write access to the release page.
+#
+# Go consumers already get integrity from the checksum database; this is for
+# anyone who takes the source archive instead of `go get`.
+name: Release provenance
+
+on:
+  release:
+    types: [published]
+  # Lets provenance be attached to a tag that was released earlier.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to attach provenance to
+        required: true
+        type: string
+
+permissions: read-all
+
+jobs:
+  archive:
+    name: Build the source archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      digest: ${{ steps.hash.outputs.digest }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Resolve the tag
+        id: tag
+        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Create the archive
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git archive --format=tar.gz --prefix="go-masker-${TAG}/" -o "go-masker-${TAG}.tar.gz" "${TAG}"
+          ls -l "go-masker-${TAG}.tar.gz"
+
+      - name: Hash the archive
+        id: hash
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: echo "digest=$(sha256sum "go-masker-${TAG}.tar.gz" | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Attach the archive to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: gh release upload "${TAG}" "go-masker-${TAG}.tar.gz" --clobber
+
+  provenance:
+    name: Generate provenance
+    needs: archive
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    # Referenced by semantic version on purpose. Every other action in this
+    # repository is pinned by commit SHA; this one must not be, because the
+    # generator verifies its own identity by tag and a SHA reference breaks
+    # that verification.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.archive.outputs.digest }}
+      upload-assets: true
+      upload-tag-name: ${{ needs.archive.outputs.tag }}

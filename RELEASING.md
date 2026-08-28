@@ -46,7 +46,10 @@ git push origin v0.2.0
 ```
 
 Create a GitHub release from the tag and paste that version's changelog
-section as the release notes.
+section as the release notes. Publishing the release starts the provenance
+workflow, which attaches a source archive and a SLSA attestation to it. If a
+release was published before that workflow existed, run it by hand from the
+Actions tab with the tag as its input.
 
 ## After tagging
 
