@@ -26,7 +26,7 @@ make vet           # go vet ./...
 make lint          # golangci-lint config verify + run
 make test          # go test ./...
 make race          # go test -race ./...
-make bench         # root benchmarks
+make bench         # root benchmarks, 5 runs each
 make bench-matrix  # 260 masking scenarios, each result checked
 make fuzz          # all five fuzz targets, 30s each
 make vulncheck     # govulncheck against the standard library
@@ -109,6 +109,16 @@ results to a package-level sink so the compiler cannot optimise the work away.
 Allocation counts travel between machines much better than nanoseconds; prefer
 them when arguing that a change is a regression. Reference numbers and the
 measurement method are in [PERFORMANCE.md](PERFORMANCE.md).
+
+Timing flags come from `BENCH_FLAGS` and `MATRIX_FLAGS`, so a measurement
+recorded in the documentation can be repeated without retyping the command:
+
+```text
+make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"
+```
+
+The matrix default stays short because CI runs it on every supported Go
+version.
 
 ## Pull requests
 

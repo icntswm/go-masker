@@ -7,7 +7,9 @@ application data or custom rules contain no sensitive information.
 The public operations fail closed: a malformed document, unsupported value,
 cycle, callback panic, policy failure, or resource limit returns a safe root
 fallback and never returns the original input. Errors contain only categories,
-paths, and field names; callback error text is not propagated.
+paths, field names, and the name of the rule that failed; callback error text
+is not propagated. Keys and paths reaching a message are escaped, because they
+come from the document being masked.
 
 The implementation bounds reflection depth, visited nodes, operation-wide
 pointer dereferences, and JSON input bytes. The pointer indirection ceiling is

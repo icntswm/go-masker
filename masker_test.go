@@ -1046,12 +1046,21 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// A record can be forged with more than an ASCII newline: C1 controls and
+	// the Unicode line separators end a line for some readers, and a bidi
+	// override makes a line render as something it is not.
 	cases := []struct {
 		name string
 		key  string
 	}{
 		{name: "newline", key: "evil\nFATAL forged log entry"},
 		{name: "control", key: "tab\there"},
+		{name: "c1_next_line", key: "evil\u0085FATAL forged log entry"},
+		{name: "c1_control_sequence", key: "evil\u009bFATAL forged log entry"},
+		{name: "line_separator", key: "evil\u2028FATAL forged log entry"},
+		{name: "paragraph_separator", key: "evil\u2029FATAL forged log entry"},
+		{name: "bidi_override", key: "evil\u202eFATAL forged log entry"},
+		{name: "zero_width", key: "evil\u200bFATAL forged log entry"},
 		{name: "long_multibyte", key: strings.Repeat("ключ", 200)},
 		{name: "printable_unicode", key: "ключ"},
 	}
@@ -1064,8 +1073,10 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 				t.Fatalf("expected a MaskError, got %v", err)
 			}
 			message := masked.Error()
-			if strings.ContainsAny(message, "\n\r\t") {
-				t.Fatalf("control character reached the message: %q", message)
+			for _, r := range message {
+				if !strconv.IsPrint(r) && r != ' ' {
+					t.Fatalf("unprintable %U reached the message: %q", r, message)
+				}
 			}
 			if !utf8.ValidString(message) {
 				t.Fatalf("message is not valid UTF-8: %q", message)

@@ -156,9 +156,15 @@ const maxDiagnosticLen = 256
 
 // safeDiagnostic makes a key or path safe to write into a log line. Keys come
 // from the masked document, so they are attacker-controlled: a newline in one
-// would otherwise split the record and let a forged entry be injected. Control
-// characters and invalid UTF-8 are escaped, printable text is left readable,
-// and the result is truncated so one oversized key cannot dominate the output.
+// would otherwise split the record and let a forged entry be injected, and a
+// bidi override or a U+2028 line separator can make a record render as
+// something it is not. Anything unprintable is escaped, printable text is left
+// readable, and the result is truncated so one oversized key cannot dominate
+// the output.
+//
+// The test is strconv.IsPrint because that is exactly the set strconv.Quote
+// rewrites: asking "would quoting change this?" cannot drift away from the
+// quoting itself, the way a hand-written list of control ranges does.
 func safeDiagnostic(value string) string {
 	if value == "" {
 		return ""
@@ -166,7 +172,7 @@ func safeDiagnostic(value string) string {
 	needsEscape := !utf8.ValidString(value)
 	if !needsEscape {
 		for _, r := range value {
-			if r < 0x20 || r == 0x7f {
+			if !strconv.IsPrint(r) {
 				needsEscape = true
 				break
 			}

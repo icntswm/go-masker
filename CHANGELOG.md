@@ -52,11 +52,12 @@ API may still change, and every such change is listed here.
 
 ### Fixed
 
-- Escaped control characters and invalid UTF-8 in the key, path and field
+- Escaped every unprintable rune and invalid UTF-8 in the key, path and field
   names that appear in error messages. A key is attacker-controlled, so a
   newline in one could previously split a log record and let a forged entry be
-  injected. Diagnostics are also truncated so one oversized key cannot dominate
-  the output.
+  injected; C1 controls, the `U+2028` and `U+2029` line separators, and bidi
+  overrides could forge or disguise one just as well. Diagnostics are also
+  truncated so one oversized key cannot dominate the output.
 - Populated `MaskError.Rule` on every rule failure, so a caller can tell which
   of several configured rules produced the fallback value. The field was
   documented and formatted but never set.

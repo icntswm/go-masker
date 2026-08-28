@@ -8,8 +8,8 @@
 | Go | go1.23.1 (cross-version results in the last section) |
 | Date | 2026-08-28 |
 | Revision | `3f00cbb` |
-| Core benchmarks | `make bench`, `-benchtime=1s -count=5`, median of 5 runs |
-| Matrix | `make bench-matrix`, `-benchtime=20ms -count=3`, median of 3 runs |
+| Core benchmarks | `make bench`, median of 5 runs |
+| Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
 
 Benchmarks build their inputs before the timer starts, report allocations, and
 retain results in package-level sinks. Every matrix case also validates the
@@ -98,7 +98,7 @@ of magnitude, from a single field to 10,000 records.
 
 ## Verified Go versions
 
-All checks below were run locally against the same commit. Coverage is 82.4 %
+All checks below were run locally against the same commit. Coverage is 82.8 %
 for the root package and 90.7 % for `httpmask`.
 
 | Go | build / vet / gofmt | `go test` | `-race` | `bench-matrix` | fuzz |

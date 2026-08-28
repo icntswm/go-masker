@@ -25,13 +25,18 @@ test:
 race:
 	go test -race ./...
 
+# Timing flags live in variables so a documented measurement can be reproduced
+# without retyping the command: make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"
+BENCH_FLAGS ?= -benchtime=1s -count=5
+MATRIX_FLAGS ?= -benchtime=10ms
+
 # Run with -benchmem to track allocations in hot paths.
 bench:
-	go test -run '^$$' -skip '^BenchmarkMaskMatrix$$' -bench . -benchmem ./...
+	go test -run '^$$' -skip '^BenchmarkMaskMatrix$$' -bench . -benchmem $(BENCH_FLAGS) ./...
 
 # Run all generated matrix cases with correctness checks and short timings.
 bench-matrix:
-	go test -run '^$$' -bench '^BenchmarkMaskMatrix$$' -benchmem -benchtime=10ms ./...
+	go test -run '^$$' -bench '^BenchmarkMaskMatrix$$' -benchmem $(MATRIX_FLAGS) ./...
 
 # Run all root fuzz targets; extend -fuzztime for real campaigns.
 fuzz: fuzz-core fuzz-http
