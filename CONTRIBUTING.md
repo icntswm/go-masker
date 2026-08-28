@@ -63,6 +63,10 @@ a CI run cannot diverge:
 | `Vulnerability scan` | `make vulncheck` on a recent toolchain |
 | `Lint` | `golangci-lint` on one pinned Go version |
 
+A separate `Scorecard` workflow runs the OpenSSF analysis on pushes to `main`
+and weekly. It scores the repository, not the code, and its findings land in
+the Security tab.
+
 ### Linting
 
 The lint job pins Go 1.23.x on purpose. `golangci-lint` statically links
