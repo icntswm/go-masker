@@ -6,7 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
-## [Unreleased]
+## [0.1.0] - 2026-08-28
+
+First tagged release.
 
 ### Added
 
@@ -58,8 +60,8 @@ API may still change, and every such change is listed here.
   injected; C1 controls, the `U+2028` and `U+2029` line separators, and bidi
   overrides could forge or disguise one just as well; a bare quote or backslash
   ends a logfmt value early, and a space starts a new logfmt field, so a key
-  could contribute a field of the attacker's choosing. Diagnostics are also truncated so one
-  oversized key cannot dominate the output.
+  could contribute a field of the attacker's choosing. Diagnostics are also
+  truncated so one oversized key cannot dominate the output.
 - Populated `MaskError.Rule` on every rule failure, so a caller can tell which
   of several configured rules produced the fallback value. The field was
   documented and formatted but never set.
@@ -107,3 +109,5 @@ API may still change, and every such change is listed here.
 
 - Settled the public module path `github.com/icntswm/go-masker` and added
   release, contribution and agent-facing documentation.
+
+[0.1.0]: https://github.com/icntswm/go-masker/releases/tag/v0.1.0
