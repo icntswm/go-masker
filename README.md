@@ -3,6 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/icntswm/go-masker.svg)](https://pkg.go.dev/github.com/icntswm/go-masker)
 [![CI](https://github.com/icntswm/go-masker/actions/workflows/ci.yml/badge.svg)](https://github.com/icntswm/go-masker/actions/workflows/ci.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14272/badge)](https://www.bestpractices.dev/projects/14272)
+[![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev/spec/v1.0/levels)
 
 `go-masker` is a Go library for fail-closed masking of sensitive data before
 it reaches logs, diagnostics, traces, or other observability systems.
@@ -71,6 +72,7 @@ Each of those claims is checked by the suite; see
 - [How it is tested](#how-it-is-tested)
 - [How this was built](#how-this-was-built)
 - [Performance](#performance)
+- [Releases](#releases)
 - [Documentation map](#documentation-map)
 - [Compatibility and stability](#compatibility-and-stability)
 - [Contributing](#contributing)
@@ -378,6 +380,21 @@ make race
 make bench
 make bench-matrix
 ```
+
+## Releases
+
+Releases carry a source archive and a SLSA build attestation, so the archive
+can be traced to the workflow and the tag that produced it:
+
+```text
+slsa-verifier verify-artifact go-masker-vX.Y.Z.tar.gz \
+  --provenance-path go-masker-vX.Y.Z.tar.gz.intoto.jsonl \
+  --source-uri github.com/icntswm/go-masker --source-tag vX.Y.Z
+```
+
+Taking the module with `go get` needs none of this: the Go checksum database
+already verifies what you download. The attestation is for anyone who takes
+the archive instead.
 
 ## Documentation map
 
