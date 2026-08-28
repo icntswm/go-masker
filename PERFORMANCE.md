@@ -7,8 +7,8 @@
 | Hardware | Apple M3 Pro, darwin/arm64 |
 | Go | go1.23.1 (cross-version results in the last section) |
 | Date | 2026-08-28 |
-| Benchmark revision | `a1bcd24` |
-| Verification revision | `a7f3b6d` |
+| Benchmark revision | `c58d8fc` |
+| Verification revision | `2bf4fa7` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
 
@@ -99,9 +99,9 @@ of magnitude, from a single field to 10,000 records.
 
 ## Verified Go versions
 
-All checks below were run locally at `a7f3b6d`, where coverage is 83.4 % for
+All checks below were run locally at `2bf4fa7`, where coverage is 83.4 % for
 the root package and 90.7 % for `httpmask`. The benchmark numbers above come
-from `a1bcd24`; the commits since then changed an error path and the tests, not
+from `c58d8fc`; the commits since then changed an error path and the tests, not
 anything a benchmark measures.
 
 | Go | build / vet / gofmt | `go test` | `-race` | `bench-matrix` | fuzz |
