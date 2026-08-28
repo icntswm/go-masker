@@ -3,6 +3,7 @@ package masker
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"reflect"
 	"strconv"
@@ -434,6 +435,50 @@ func TestMaskJSONReaderMaxInt64Limit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(result) != `{"safe":"true"}` {
+		t.Fatalf("unexpected JSON: %s", result)
+	}
+}
+
+// pausingReader returns (0, nil) between chunks. That is legal: it means
+// "nothing happened", not end of input.
+type pausingReader struct {
+	chunks []string
+	index  int
+}
+
+func (r *pausingReader) Read(p []byte) (int, error) {
+	if r.index >= len(r.chunks) {
+		return 0, io.EOF
+	}
+	chunk := r.chunks[r.index]
+	r.index++
+	if chunk == "" {
+		return 0, nil
+	}
+	return copy(p, chunk), nil
+}
+
+func TestMaskJSONReaderLimitSurvivesAPause(t *testing.T) {
+	m := newTestMasker(t, WithMaxInputBytes(2))
+	// Two bytes fill the limit exactly, then the reader pauses before offering
+	// more. Reading the pause as EOF would mask the first document and discard
+	// the rest without reporting the overrun.
+	source := &pausingReader{chunks: []string{"{}", "", "{}"}}
+	result, err := m.MaskJSONReader(source)
+	if !errors.Is(err, ErrInputLimit) {
+		t.Fatalf("input limit was not reported: result=%s err=%v", result, err)
+	}
+	if !json.Valid(result) {
+		t.Fatalf("fallback is not valid JSON: %s", result)
+	}
+
+	// A pause before a genuine end of input is still just a pause.
+	within := &pausingReader{chunks: []string{"{}", ""}}
+	result, err = m.MaskJSONReader(within)
+	if err != nil {
+		t.Fatalf("unexpected error for input within the limit: %v", err)
+	}
+	if string(result) != "{}" {
 		t.Fatalf("unexpected JSON: %s", result)
 	}
 }
@@ -1119,9 +1164,10 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 			if !utf8.ValidString(message) {
 				t.Fatalf("message is not valid UTF-8: %q", message)
 			}
-			// Escaping expands a rune to at most six bytes, so the escaped
-			// form is longer than the input bound but still bounded.
-			if limit := 6*maxDiagnosticLen + len(`""...(truncated)`); len(masked.Path) > limit {
+			// Escaping produces at most four output bytes per input byte, so
+			// the escaped form is longer than the input bound but still
+			// bounded.
+			if limit := 4*maxDiagnosticLen + len(`""...(truncated)`); len(masked.Path) > limit {
 				t.Fatalf("path was not truncated: %d bytes", len(masked.Path))
 			}
 		})

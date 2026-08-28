@@ -151,9 +151,10 @@ func (e *MaskErrors) Unwrap() []error {
 }
 
 // maxDiagnosticLen bounds how much of a caller-supplied key or path a
-// diagnostic may carry. The bound is on the original text: escaping expands a
-// rune to at most six bytes, so an escaped diagnostic is longer than this,
-// and still bounded.
+// diagnostic may carry. The bound is on the original text: escaping produces at
+// most four output bytes per input byte, the ratio of \x00 and of an invalid
+// byte, so an escaped diagnostic is longer than this and still bounded. Per
+// rune the escape reaches ten bytes, for an unprintable rune above the BMP.
 const maxDiagnosticLen = 256
 
 // safeDiagnostic makes a key or path safe to write into a log line. Keys come

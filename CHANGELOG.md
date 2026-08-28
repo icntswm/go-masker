@@ -62,6 +62,10 @@ API may still change, and every such change is listed here.
 - Populated `MaskError.Rule` on every rule failure, so a caller can tell which
   of several configured rules produced the fallback value. The field was
   documented and formatted but never set.
+- Enforced the input limit in `MaskJSONReader` against a reader that returns
+  `(0, nil)`. That return means "nothing happened", not end of input, so a
+  document overrunning the limit was masked and the remainder discarded
+  instead of being reported as `input_limit`.
 - Bounded the query pair buffer that `httpmask` sizes from the separator
   count. A query of nothing but `&` turned four megabytes of input into a
   hundred and twenty-eight megabytes of scratch.

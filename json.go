@@ -90,12 +90,16 @@ func readLimited(src io.Reader, limit int64) ([]byte, error) {
 	if int64(len(data)) < limit {
 		return data, nil
 	}
+	// io.ReadFull rather than a bare Read: a Reader is allowed to return
+	// (0, nil), which means "nothing happened", not end of input. Reading it as
+	// EOF would accept a document that overruns the limit instead of rejecting
+	// it, which is the one direction this package must never fail in.
 	var probe [1]byte
-	n, probeErr := src.Read(probe[:])
+	n, probeErr := io.ReadFull(src, probe[:])
 	if n > 0 {
 		return nil, errInputLimit
 	}
-	if probeErr != nil && probeErr != io.EOF {
+	if probeErr != nil && !errors.Is(probeErr, io.EOF) {
 		return nil, probeErr
 	}
 	return data, nil
