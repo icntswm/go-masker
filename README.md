@@ -2,6 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/icntswm/go-masker.svg)](https://pkg.go.dev/github.com/icntswm/go-masker)
 [![CI](https://github.com/icntswm/go-masker/actions/workflows/ci.yml/badge.svg)](https://github.com/icntswm/go-masker/actions/workflows/ci.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14272/badge)](https://www.bestpractices.dev/projects/14272)
 
 `go-masker` is a Go library for fail-closed masking of sensitive data before
 it reaches logs, diagnostics, traces, or other observability systems.
