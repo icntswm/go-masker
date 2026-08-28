@@ -56,8 +56,9 @@ API may still change, and every such change is listed here.
   names that appear in error messages. A key is attacker-controlled, so a
   newline in one could previously split a log record and let a forged entry be
   injected; C1 controls, the `U+2028` and `U+2029` line separators, and bidi
-  overrides could forge or disguise one just as well, and a bare quote or
-  backslash ends a logfmt value early. Diagnostics are also truncated so one
+  overrides could forge or disguise one just as well; a bare quote or backslash
+  ends a logfmt value early, and a space starts a new logfmt field, so a key
+  could contribute a field of the attacker's choosing. Diagnostics are also truncated so one
   oversized key cannot dominate the output.
 - Populated `MaskError.Rule` on every rule failure, so a caller can tell which
   of several configured rules produced the fallback value. The field was

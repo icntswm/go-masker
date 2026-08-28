@@ -1108,6 +1108,7 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 		{name: "zero_width", key: "evil\u200bFATAL forged log entry"},
 		{name: "quote", key: `key="value"`},
 		{name: "backslash", key: `key\path`},
+		{name: "logfmt_field", key: "x=1 forged=true"},
 		{name: "long_multibyte", key: strings.Repeat("ключ", 200)},
 		{name: "long_trailing_backslash", key: strings.Repeat("a", 254) + `\`},
 		{name: "long_quoted", key: strings.Repeat(`a"`, 200)},
@@ -1149,7 +1150,9 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 					t.Fatalf("truncated diagnostic is not a prefix of the key: %q", body)
 				}
 			case field == testCase.key:
-				if strings.ContainsAny(field, "\"\\") {
+				// A quote or backslash closes a value early; a space starts a
+				// new logfmt field. None may survive unquoted.
+				if strings.ContainsAny(field, "\"\\ ") {
 					t.Fatalf("raw delimiter left in the diagnostic: %q", message)
 				}
 			default:

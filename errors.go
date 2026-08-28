@@ -165,11 +165,17 @@ const maxDiagnosticLen = 256
 // Anything of that kind is escaped, printable text is left readable, and the
 // result is truncated so one oversized key cannot dominate the output.
 //
-// The test asks "would quoting change this?", which cannot drift away from the
-// quoting itself the way a hand-written list of control ranges does. That is
-// every unprintable rune, plus the quote and the backslash: both are printable
-// but Quote rewrites them anyway, and either one loose in a value can break a
-// logfmt or JSON-shaped record.
+// The test is "would quoting change this?", which cannot drift away from the
+// quoting itself the way a hand-written list of control ranges does, plus the
+// three printable characters Quote leaves alone that a record format does not:
+// the quote and the backslash close a value early, and a space starts a new
+// logfmt field, so a key of "x=1 forged=true" would otherwise appear in the
+// log as a field the attacker chose.
+//
+// This bounds what a key can do to a record; it does not make the message a
+// logfmt value. The message carries spaces of its own, so a caller that splices
+// it into a record raw still produces junk tokens - it should be logged as one
+// field.
 func safeDiagnostic(value string) string {
 	if value == "" {
 		return ""
@@ -201,7 +207,9 @@ func needsQuoting(value string) bool {
 		return true
 	}
 	for _, r := range value {
-		if !strconv.IsPrint(r) || r == '"' || r == '\\' {
+		// A space is the only whitespace strconv.IsPrint admits; every other
+		// space rune is already unprintable to it.
+		if !strconv.IsPrint(r) || r == '"' || r == '\\' || r == ' ' {
 			return true
 		}
 	}
