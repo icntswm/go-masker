@@ -99,7 +99,7 @@ of magnitude, from a single field to 10,000 records.
 
 ## Verified Go versions
 
-All checks below were run locally at `6b60338`, where coverage is 82.8 % for
+All checks below were run locally at `6b60338`, where coverage is 83.3 % for
 the root package and 90.7 % for `httpmask`. The benchmark numbers above come
 from `3f00cbb`; the commits since then changed an error path and the tests, not
 anything a benchmark measures.
