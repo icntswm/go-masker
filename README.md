@@ -68,6 +68,7 @@ Each of those claims is checked by the suite; see
 - [Errors and fail-closed behavior](#errors-and-fail-closed-behavior)
 - [Limits and security](#limits-and-security)
 - [How it is tested](#how-it-is-tested)
+- [How this was built](#how-this-was-built)
 - [Performance](#performance)
 - [Documentation map](#documentation-map)
 - [Compatibility and stability](#compatibility-and-stability)
@@ -348,6 +349,14 @@ The version matrix earns its cost: it caught a change in `encoding/json` string
 escaping in Go 1.27 on the day `stable` moved. A separate check then confirmed
 what mattered - masking a fixed corpus under every supported release still
 produces byte-identical output.
+
+## How this was built
+
+This library was written with AI assistance. Everything above is how that is
+kept honest: a change has to survive the same suite on every supported Go
+release before it ships. Provenance is not a substitute for review - the
+maintainer answers for what is here regardless of how it was produced, and you
+should read it the way you would read any dependency that handles secrets.
 
 ## Performance
 
