@@ -65,7 +65,6 @@ go-masker/
 ├── ARCHITECTURE.md
 ├── Makefile
 ├── .golangci.yml
-├── scorecard.yml
 ├── doc.go
 ├── errors.go
 ├── json.go
