@@ -18,7 +18,7 @@ linters:
     - errorlint
     - nilerr
 
-    # Fail-closed behaviour must be structural, not incidental.
+    # Fail-closed behavior must be structural, not incidental.
     - exhaustive
     - forcetypeassert
     - gosec
@@ -61,7 +61,7 @@ linters:
       - path: _test\.go
         linters:
           - forcetypeassert
-      # Rewriting benchmark scaffolding is churn without a behaviour change;
+      # Rewriting benchmark scaffolding is churn without a behavior change;
       # the rule still applies to shipped code.
       - path: _test\.go
         linters:

@@ -340,7 +340,7 @@ of shipped code.
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
 | Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
-| Examples | 26, executed and output-checked, so documentation cannot drift from behaviour |
+| Examples | 26, executed and output-checked, so documentation cannot drift from behavior |
 | Coverage | 83.4% core, 90.7% `httpmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |

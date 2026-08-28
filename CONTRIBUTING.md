@@ -107,7 +107,7 @@ hand.
 ## Benchmarks
 
 Prepare inputs before `b.ResetTimer()`, call `b.ReportAllocs()`, and assign
-results to a package-level sink so the compiler cannot optimise the work away.
+results to a package-level sink so the compiler cannot optimize the work away.
 Allocation counts travel between machines much better than nanoseconds; prefer
 them when arguing that a change is a regression. Reference numbers and the
 measurement method are in [PERFORMANCE.md](PERFORMANCE.md).
@@ -125,7 +125,7 @@ version.
 ## Pull requests
 
 - Keep changes focused, and say what the security or compatibility effect is.
-- Explain user-visible behaviour changes in the description, not only in code.
+- Explain user-visible behavior changes in the description, not only in code.
 - Update `CHANGELOG.md` for anything a user would notice: fixes, security
   changes, and API changes.
 - Public API changes need an explicit note while the project is pre-1.0; the
