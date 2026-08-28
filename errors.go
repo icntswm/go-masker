@@ -159,18 +159,21 @@ const maxDiagnosticLen = 256
 
 // safeDiagnostic makes a key or path safe to write into a log line. Keys come
 // from the masked document, so they are attacker-controlled: a newline in one
-// would otherwise split the record and let a forged entry be injected, and a
-// bidi override or a U+2028 line separator can make a record render as
-// something it is not, and a bare quote or backslash ends a logfmt value early.
-// Anything of that kind is escaped, printable text is left readable, and the
-// result is truncated so one oversized key cannot dominate the output.
+// would otherwise split the record and let a forged entry be injected, a bidi
+// override or a U+2028 line separator can make a record render as something it
+// is not, a bare quote or backslash ends a value early, and a space starts a
+// new logfmt field. Anything of that kind is escaped, printable text is left
+// readable, and the result is truncated so one oversized key cannot dominate
+// the output.
 //
-// The test is "would quoting change this?", which cannot drift away from the
-// quoting itself the way a hand-written list of control ranges does, plus the
-// three printable characters Quote leaves alone that a record format does not:
-// the quote and the backslash close a value early, and a space starts a new
-// logfmt field, so a key of "x=1 forged=true" would otherwise appear in the
-// log as a field the attacker chose.
+// The base test is "would quoting change this?", which cannot drift away from
+// the quoting itself the way a hand-written list of control ranges does. It
+// takes three named characters to express, because strconv.IsPrint and
+// strconv.Quote do not agree: Quote escapes the quote and the backslash even
+// though IsPrint calls them printable, so both are named to keep the test in
+// step with the quoting. The space is the one character named for a reason
+// Quote knows nothing about: Quote leaves it, and a key of "x=1 forged=true"
+// would otherwise appear in the log as a field the attacker chose.
 //
 // This bounds what a key can do to a record; it does not make the message a
 // logfmt value. The message carries spaces of its own, so a caller that splices
