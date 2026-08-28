@@ -763,6 +763,8 @@ fall back to the original value when masking returns an error.
 - `MaskAny` does not preserve the concrete struct type, even with
   `WithPreserveSafeTypes`.
 - JSON duplicate keys use last-wins behavior from `encoding/json`.
+- Scratch buffers for large objects live in a fixed-size process-wide pool of
+  four buffers of up to 16 MiB, held until the process exits.
 - `MaskJSONReader` reads the entire document into memory.
 - The streaming walker enforces JSON depth while scanning; the complete input
   is still held in memory by the public byte-slice and reader APIs.

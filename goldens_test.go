@@ -51,11 +51,20 @@ var goldenSentinels = map[string]error{
 	"panic":               masker.ErrPanic,
 }
 
+// The counts are quoted in README.md. Asserting them here is what stops a
+// deleted fixture from leaving a green suite and a documentation figure that
+// is quietly wrong, the same way the benchmark matrix asserts its case count.
+const (
+	expectedGoldenFiles = 8
+	expectedGoldenCases = 45
+)
+
 func TestSecurityDecisionGoldenFiles(t *testing.T) {
 	entries, err := os.ReadDir("testdata/security_decisions")
 	if err != nil {
 		t.Fatal(err)
 	}
+	files, total := 0, 0
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() || !strings.HasSuffix(name, ".json") {
@@ -69,11 +78,17 @@ func TestSecurityDecisionGoldenFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
+		files++
+		total += len(cases)
 		for _, testCase := range cases {
 			t.Run(name+"/"+testCase.Name, func(t *testing.T) {
 				runGoldenCase(t, testCase)
 			})
 		}
+	}
+	if files != expectedGoldenFiles || total != expectedGoldenCases {
+		t.Fatalf("golden corpus changed: %d cases in %d files, expected %d in %d; update the counts here and in README.md",
+			total, files, expectedGoldenCases, expectedGoldenFiles)
 	}
 }
 

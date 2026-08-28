@@ -1,8 +1,10 @@
 package masker
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"reflect"
@@ -927,20 +929,120 @@ func TestKeyPolicyRejectsConflictingDuplicateKeys(t *testing.T) {
 	}
 }
 
+// largeObjectDocument builds a root object past the large-object threshold
+// whose member count still fits the pooled member slice, which is what sends
+// its buffers to the large buffer pool rather than the sync.Pool. The key
+// policy matches whole keys, so the members are public and one real sensitive
+// key carries the value an assertion can look for.
+func largeObjectDocument() []byte {
+	const members, valueLen = 150, 600
+	var builder strings.Builder
+	filler := strings.Repeat("x", valueLen)
+	builder.WriteByte('{')
+	for i := range members {
+		fmt.Fprintf(&builder, `"display_name_%d":"public-%s-%d",`, i, filler, i)
+	}
+	builder.WriteString(`"token":"secret-in-wide-object"}`)
+	return []byte(builder.String())
+}
+
+// TestLargeObjectBufferIsPooled covers the buffer pool kept for objects too
+// large for the sync.Pool. It is process-wide state, so a leak or a wrongly
+// reused buffer would surface as corruption in an unrelated document.
+func TestLargeObjectBufferIsPooled(t *testing.T) {
+	for len(streamObjectLargeBufferPool) > 0 {
+		<-streamObjectLargeBufferPool
+	}
+	m := newTestMasker(t)
+	document := largeObjectDocument()
+
+	first, err := m.MaskJSON(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(streamObjectLargeBufferPool) == 0 {
+		t.Fatal("a large object did not return its buffer to the pool")
+	}
+
+	// The second pass runs on the recycled buffer and must produce the same
+	// bytes as the first.
+	second, err := m.MaskJSON(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("masking through a recycled buffer changed the output")
+	}
+	if bytes.Contains(second, []byte("secret-in-wide-object")) {
+		t.Fatalf("secret survived: %s", second[:64])
+	}
+}
+
+type concurrentLeaf struct {
+	Token string `json:"token"`
+	Name  string `json:"name"`
+}
+
+type concurrentRecord struct {
+	Password string           `json:"password"`
+	Leaf     concurrentLeaf   `json:"leaf"`
+	Leaves   []concurrentLeaf `json:"leaves"`
+}
+
+// TestMaskerConcurrentUse exercises the state shared across operations, which
+// a scalar call would never reach: the struct metadata cache, the object
+// buffer pool, and the separate pool for buffers grown past the large-object
+// threshold. Run it under -race; on its own it only proves nothing panics.
 func TestMaskerConcurrentUse(t *testing.T) {
 	m := newTestMasker(t, WithPreserveSafeTypes())
+
+	// Above streamObjectSmallScratchLimit, so the root object takes the large
+	// buffer pool rather than the sync.Pool.
+	wideDocument := largeObjectDocument()
+	small := []byte(`{"items":[{"token":"secret","name":"public"}],"password":"secret"}`)
+
+	record := concurrentRecord{
+		Password: "secret",
+		Leaf:     concurrentLeaf{Token: "secret", Name: "public"},
+		Leaves:   []concurrentLeaf{{Token: "secret", Name: "public"}},
+	}
+
 	var wg sync.WaitGroup
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		wg.Add(1)
-		go func() {
+		go func(worker int) {
 			defer wg.Done()
-			for j := 0; j < 20; j++ {
-				result, err := m.MaskValue("token", "secret")
-				if err != nil || result != DefaultRedactionMarker {
-					t.Errorf("unexpected concurrent result: %#v, %v", result, err)
+			for j := range 20 {
+				switch (worker + j) % 4 {
+				case 0:
+					result, err := m.MaskValue("token", "secret")
+					if err != nil || result != DefaultRedactionMarker {
+						t.Errorf("scalar: %#v, %v", result, err)
+					}
+				case 1:
+					result, err := m.MaskJSON(small)
+					if err != nil || !json.Valid(result) || bytes.Contains(result, []byte("secret")) {
+						t.Errorf("json: %s, %v", result, err)
+					}
+				case 2:
+					result, err := m.MaskAny(record)
+					if err != nil || strings.Contains(fmt.Sprint(result), "secret") {
+						t.Errorf("reflection: %#v, %v", result, err)
+					}
+				case 3:
+					// One worker in four touches the wide document, which is
+					// enough to keep the large buffer pool contended without
+					// making the suite slow.
+					if worker%4 != 3 {
+						continue
+					}
+					result, err := m.MaskJSON(wideDocument)
+					if err != nil || !json.Valid(result) || bytes.Contains(result, []byte("secret-in-wide-object")) {
+						t.Errorf("wide json: valid=%v err=%v", json.Valid(result), err)
+					}
 				}
 			}
-		}()
+		}(i)
 	}
 	wg.Wait()
 }

@@ -88,7 +88,9 @@ later `go test`, so the same input can never regress silently.
 - Add a regression test for every parser, policy, or fail-closed change.
 - Golden cases for JSON, headers and URLs go in
   `testdata/security_decisions/`; the schema is documented in the
-  [README there](testdata/security_decisions/README.md). Cases that cannot be
+  [README there](testdata/security_decisions/README.md). Adding or removing a
+  case fails `TestSecurityDecisionGoldenFiles` until its counts and the figures
+  in `README.md` are updated together. Cases that cannot be
   expressed as JSON — cycles, shared DAGs, struct-tag precedence — stay
   table-driven in Go.
 - Never use real credentials or production data in tests, benchmarks, examples

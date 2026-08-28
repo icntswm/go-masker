@@ -39,6 +39,10 @@ type structConflictMetadata struct {
 	conflicting []string
 }
 
+// load returns the metadata for one struct type, building it once. The entry
+// is keyed by type alone even though the build also depends on tagName,
+// tagRules and policy: a cache belongs to a single Masker, and all three are
+// fixed at construction. Sharing a cache between Maskers would break that.
 func (c *structMetadataCache) load(typ reflect.Type, tagName string, tagRules map[string]Rule, policy Policy) *structMetadata {
 	if cached, ok := c.entries.Load(typ); ok {
 		if metadata, ok := cached.(*structMetadata); ok {

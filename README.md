@@ -331,7 +331,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 5,341 lines of tests against 3,691 lines
+listed rather than asserted. There are 5,458 lines of tests against 3,709 lines
 of shipped code.
 
 | | |
@@ -340,7 +340,7 @@ of shipped code.
 | Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
 | Examples | 26, executed and output-checked, so documentation cannot drift from behaviour |
-| Coverage | 83.3% core, 90.7% `httpmask` |
+| Coverage | 83.4% core, 90.7% `httpmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 

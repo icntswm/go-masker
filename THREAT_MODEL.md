@@ -43,6 +43,14 @@ the safe root fallback.
 Object-member collection uses bounded scratch storage and map-assisted duplicate
 lookup for wide objects. Members are sorted before encoding, so callers should
 still apply input and node limits to untrusted payloads.
+
+Scratch buffers are pooled. Buffers grown past the large-object threshold are
+kept in a separate fixed-size pool rather than a `sync.Pool`, so they survive a
+garbage collection: at most four buffers of up to 16 MiB each, shared by every
+`Masker` in the process and held until it exits. One large document therefore
+raises the process floor by up to 64 MiB. A pooled buffer is cleared of the
+keys it held before it is reused; its value bytes are overwritten in place and
+are unreachable through the API.
 Cycle detection tracks only the active recursion path, so shared DAG nodes are
 allowed. Unsupported map key types and reflection values are rejected.
 

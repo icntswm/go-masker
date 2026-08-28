@@ -79,7 +79,11 @@ var streamObjectBufferPool = sync.Pool{
 	New: func() any { return newStreamObjectBuffers() },
 }
 
-// Keep large buffers bounded; sync.Pool is intentionally not used for them.
+// Keep large buffers bounded; sync.Pool is intentionally not used for them,
+// because it would drop them at the next GC and a wide document would pay the
+// growth again. The ceiling is deliberate and process-wide: at most
+// streamObjectLargeBufferSlots buffers of streamObjectMaxPooledScratch each,
+// shared by every Masker in the process and held until the process exits.
 var streamObjectLargeBufferPool = make(chan *streamObjectBuffers, streamObjectLargeBufferSlots)
 
 func (m *Masker) maskJSONStream(data []byte) ([]byte, error) {
@@ -387,7 +391,10 @@ func acquireStreamObjectBuffers(largeHint bool) *streamObjectBuffers {
 }
 
 func releaseStreamObjectBuffers(buffers *streamObjectBuffers, scratch []byte, members []streamJSONMember) {
-	clear(members)
+	// Clear to capacity, not to length: a shorter document leaves the keys of
+	// a longer earlier one alive past the end of the slice, where nothing will
+	// overwrite them.
+	clear(members[:cap(members)])
 	if cap(members) > 256 {
 		return
 	}
@@ -773,6 +780,10 @@ func addUnique(errs *[]*MaskError, err *MaskError) {
 	addMaskError(errs, err)
 }
 
+// streamObjectKey decodes one object key. It relies on the caller having
+// checked that data[start] is a quote, and on scanJSONString returning
+// len(data) for an unterminated string: the caller's colon check then rejects
+// the document, so a token reaching here is always properly delimited.
 func (w *streamJSONWalker) streamObjectKey(data []byte, start, end int) (string, bool) {
 	if end-start < 2 {
 		return "", false
