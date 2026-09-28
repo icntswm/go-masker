@@ -245,6 +245,35 @@ func ExampleWithStructTag() {
 	// Output: [REDACTED] core
 }
 
+func ExampleWithTagRule() {
+	type payload struct {
+		ID string `mask:"last2"`
+	}
+
+	last2, err := masker.NewRule("last2", func(input masker.RuleInput) (string, error) {
+		runes := []rune(input.Value)
+		if len(runes) < 2 {
+			return "**", nil
+		}
+		return string(runes[len(runes)-2:]), nil
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	m, err := masker.New(masker.DefaultPolicy(), masker.WithTagRule("last2", last2))
+	if err != nil {
+		panic(err)
+	}
+	masked, err := m.MaskAny(payload{ID: "customer-8891"})
+	if err != nil {
+		panic(err)
+	}
+	values := masked.(map[string]any)
+	fmt.Println(values["ID"])
+	// Output: 91
+}
+
 func ExampleMasker_MaskField() {
 	m, err := masker.New(masker.DefaultPolicy())
 	if err != nil {

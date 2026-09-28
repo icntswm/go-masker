@@ -142,6 +142,7 @@ func WithMaxDepth(depth int) Option
 func WithMaxNodes(nodes int) Option
 func WithMaxInputBytes(bytes int64) Option
 func WithStructTag(name string) Option
+func WithTagRule(name string, rule Rule) Option
 ```
 
 `MaskValue` is a convenience wrapper over `MaskField` and uses
@@ -347,8 +348,8 @@ When a rule is selected for a non-scalar value, it replaces the entire
 subtree. The rule receives empty scalar text for containers, so partial rules
 conservatively produce their full-redaction fallback.
 
-Custom rules are selected by `Policy.Decide`. They are not registered through
-struct tags.
+Custom rules are selected by `Policy.Decide`, or by a struct tag once they are
+registered with `WithTagRule`.
 
 ## 6. Struct tags and precedence
 
@@ -383,10 +384,18 @@ Rules:
 Priority is:
 
 ```text
-omit > full > concrete built-in rule > Policy > ordinary traversal
+omit > full > concrete built-in or registered rule > Policy > ordinary traversal
 ```
 
 An explicit `full` decision cannot be weakened by a partial policy or tag.
+
+`WithTagRule(name, rule)` adds a custom rule to the grammar at Masker
+construction, so it is selected through the same precedence above. Built-in
+names and `omit` cannot be redefined, and an empty name, a name already
+registered, or a name containing a comma, a space, or a quote is rejected with
+`ErrInvalidConfig`, mirroring the strict tag grammar. Registration is
+construction-scoped: each Masker owns its tag-rule map, so one Masker's rules
+never leak into another.
 
 ## 7. Errors and fail-closed behavior
 

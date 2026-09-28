@@ -2,6 +2,7 @@ package masker
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -95,6 +96,26 @@ func WithStructTag(name string) Option {
 			return fmt.Errorf("%w: struct tag", errorSentinels[CodeInvalidConfig])
 		}
 		cfg.structTag = name
+		return nil
+	}
+}
+
+// WithTagRule registers rule under name for the struct tag grammar, so a field
+// tagged `mask:"name"` is masked by it. Built-in names and "omit" cannot be
+// redefined: a tag that already means "hide this" must not quietly weaken.
+func WithTagRule(name string, rule Rule) Option {
+	return func(cfg *config) error {
+		if name == "" || !utf8.ValidString(name) || name == "omit" ||
+			strings.ContainsAny(name, ", \"") {
+			return fmt.Errorf("%w: tag rule", errorSentinels[CodeInvalidConfig])
+		}
+		if _, known := cfg.tagRules[name]; known {
+			return fmt.Errorf("%w: tag rule", errorSentinels[CodeInvalidConfig])
+		}
+		if isNilRule(rule) {
+			return fmt.Errorf("%w: tag rule", errorSentinels[CodeInvalidConfig])
+		}
+		cfg.tagRules[name] = rule
 		return nil
 	}
 }
