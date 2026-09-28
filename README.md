@@ -279,6 +279,21 @@ to `map[string]any`/`[]any` containers. Struct field promotion follows the
 relevant `encoding/json` rules, including same-depth tagged-field selection and
 ignored unexported embedded non-struct fields.
 
+A custom rule can join the grammar through `WithTagRule`. The name must not be
+empty, contain a comma, a space, or a quote, and built-in names and `omit`
+cannot be redefined:
+
+```go
+lastTwo, err := masker.NewRule("last2", func(input masker.RuleInput) (string, error) {
+	runes := []rune(input.Value)
+	if len(runes) < 2 {
+		return "**", nil
+	}
+	return string(runes[len(runes)-2:]), nil
+})
+m, err := masker.New(masker.DefaultPolicy(), masker.WithTagRule("last2", lastTwo))
+```
+
 ## HTTP headers and URLs
 
 The `httpmask` adapter copies headers and URLs before applying the core policy:

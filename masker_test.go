@@ -316,6 +316,85 @@ func TestWithStructTagKeepsBuiltinRules(t *testing.T) {
 	}
 }
 
+func TestWithTagRule(t *testing.T) {
+	last2, err := NewRule("last2", func(input RuleInput) (string, error) {
+		runes := []rune(input.Value)
+		if len(runes) < 2 {
+			return "**", nil
+		}
+		return string(runes[len(runes)-2:]), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type flatPayload struct {
+		Secret string `mask:"last2"`
+	}
+	type nestedPayload struct {
+		Secret string            `mask:"last2"`
+		Inner  map[string]string `json:"inner"`
+	}
+
+	t.Run("flat scalar struct", func(t *testing.T) {
+		result, err := newTestMasker(t, WithTagRule("last2", last2)).MaskAny(flatPayload{Secret: "synthetic-secret"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.(map[string]any)["Secret"] != "et" {
+			t.Fatalf("unexpected tagged value: %#v", result)
+		}
+	})
+
+	t.Run("struct with nested map", func(t *testing.T) {
+		result, err := newTestMasker(t, WithTagRule("last2", last2)).
+			MaskAny(nestedPayload{Secret: "synthetic-secret", Inner: map[string]string{"note": "value"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		masked := result.(map[string]any)
+		if masked["Secret"] != "et" {
+			t.Fatalf("unexpected tagged value: %#v", masked["Secret"])
+		}
+		if masked["inner"].(map[string]any)["note"] != "value" {
+			t.Fatalf("unexpected nested value: %#v", masked["inner"])
+		}
+	})
+
+	t.Run("registration is not global", func(t *testing.T) {
+		plain, err := New(DefaultPolicy())
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := plain.MaskAny(flatPayload{Secret: "synthetic-secret"})
+		if result != DefaultRedactionMarker || err == nil || !errors.Is(err, ErrInvalidConfig) {
+			t.Fatalf("expected unknown-tag failure on a second masker, result=%#v err=%v", result, err)
+		}
+	})
+
+	t.Run("rejects invalid registrations", func(t *testing.T) {
+		tests := []struct {
+			name string
+			opts []Option
+		}{
+			{name: "empty", opts: []Option{WithTagRule("", last2)}},
+			{name: "reserved omit", opts: []Option{WithTagRule("omit", last2)}},
+			{name: "builtin password", opts: []Option{WithTagRule("password", last2)}},
+			{name: "builtin full", opts: []Option{WithTagRule("full", last2)}},
+			{name: "comma", opts: []Option{WithTagRule("last2,x", last2)}},
+			{name: "nil rule", opts: []Option{WithTagRule("last2", nil)}},
+			{name: "nil RuleFunc", opts: []Option{WithTagRule("last2", RuleFunc(nil))}},
+			{name: "duplicate", opts: []Option{WithTagRule("last2", last2), WithTagRule("last2", last2)}},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				if _, err := New(DefaultPolicy(), test.opts...); !errors.Is(err, ErrInvalidConfig) {
+					t.Fatalf("expected ErrInvalidConfig, got %v", err)
+				}
+			})
+		}
+	})
+}
+
 func TestStructMetadataCacheReuse(t *testing.T) {
 	type payload struct {
 		Email string `mask:"email"`

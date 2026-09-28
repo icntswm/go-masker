@@ -8,6 +8,11 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+### Added
+
+- `WithTagRule(name, rule)` option registers a custom rule under the struct
+  tag grammar; built-in names and `omit` cannot be redefined.
+
 ### Changed
 
 - Key comparison ignores the `_`, `-`, and `.` separators in addition to
