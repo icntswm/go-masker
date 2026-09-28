@@ -161,12 +161,12 @@ func ExampleDefaultBindings() {
 
 	// Output:
 	// password [password passwd passphrase]
-	// token    [token access_token refresh_token api_key apikey secret]
+	// token    [token access_token refresh_token api_key apikey secret client_secret id_token private_key session_id credentials auth_token]
 	// email    [email e-mail]
 	// phone    [phone phone_number mobile]
 	// id       [id user_id customer_id]
 	// card     [card card_number pan]
-	// full     [authorization cookie set-cookie x-api-key x-auth-token proxy-authorization]
+	// full     [authorization cookie set-cookie x-api-key x-auth-token proxy-authorization x-csrf-token cvv cvc]
 }
 
 func ExampleNewKeyPolicy() {

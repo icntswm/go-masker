@@ -259,7 +259,10 @@ func Chain(policies ...Policy) Policy
 public and inspectable; there is no hidden immutable `sensitiveKeys` list.
 
 Key matching is exact and case-insensitive using Unicode-aware
-`strings.EqualFold`. Substring matching is not used. `KeyPolicy` resolves
+`strings.EqualFold`; the key text is first stripped of the separator
+characters `_`, `-`, and `.`, so `access_token`, `access-token`, and
+`accessToken` compare equal and a key of separators only never matches.
+Substring matching is not used. `KeyPolicy` resolves
 common spellings through lowercase buckets and falls back to a direct
 `EqualFold` scan for rare cross-script pairs (ASCII `k` versus KELVIN SIGN,
 `s` versus long s); benchmarks measured this two-tier shape faster than

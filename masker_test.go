@@ -965,6 +965,56 @@ type boxedRule struct{ inner any }
 func (boxedRule) Name() string                          { return "boxed" }
 func (boxedRule) Apply(input RuleInput) (string, error) { return input.Redaction, nil }
 
+func TestKeyPolicyIgnoresSeparators(t *testing.T) {
+	m := newTestMasker(t)
+	for _, test := range []struct{ key, want string }{
+		{key: "accessToken", want: DefaultRedactionMarker},
+		{key: "access-token", want: DefaultRedactionMarker},
+		{key: "AccessToken", want: DefaultRedactionMarker},
+		{key: "ACCESS.TOKEN", want: DefaultRedactionMarker},
+		// userId resolves to the ID rule, which keeps the last four units.
+		{key: "userId", want: "*alue"},
+		{key: "x_api_key", want: DefaultRedactionMarker},
+		{key: "clientSecret", want: DefaultRedactionMarker},
+		{key: "sessionId", want: DefaultRedactionMarker},
+		{key: "CVV", want: DefaultRedactionMarker},
+	} {
+		result, err := m.MaskValue(test.key, "value")
+		if err != nil || result != test.want {
+			t.Fatalf("separator variant %q was not masked: %#v, %v", test.key, result, err)
+		}
+	}
+	for _, key := range []string{"accessory", "tokens", "_", "-"} {
+		kept, keptErr := m.MaskValue(key, "keep-me")
+		if keptErr != nil || kept != "keep-me" {
+			t.Fatalf("unmatched key %q was masked: %#v, %v", key, kept, keptErr)
+		}
+	}
+
+	// Nothing in the defaults may collide cross-rule once separators are
+	// stripped: DefaultPolicy silently drops a failing construction.
+	if _, err := NewKeyPolicy(DefaultBindings()...); err != nil {
+		t.Fatalf("default bindings failed normalized validation: %v", err)
+	}
+	if _, err := NewKeyPolicy(Binding{Keys: []string{"_-."}, Rule: TokenRule()}); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("separator-only key must fail at construction: %v", err)
+	}
+	if _, err := NewKeyPolicy(
+		Binding{Keys: []string{"api_key"}, Rule: PasswordRule()},
+		Binding{Keys: []string{"apiKey"}, Rule: TokenRule()},
+	); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("separated spellings must conflict like duplicates: %v", err)
+	}
+
+	masked, err := m.MaskJSON([]byte(`{"accessToken":"abc","clientSecret":"s"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(masked); got != `{"accessToken":"[REDACTED]","clientSecret":"[REDACTED]"}` {
+		t.Fatalf("separator keys not masked in JSON: %s", got)
+	}
+}
+
 // largeObjectDocument builds a root object past the large-object threshold
 // whose member count still fits the pooled member slice, which is what sends
 // its buffers to the large buffer pool rather than the sync.Pool. The key
@@ -1319,5 +1369,18 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 	var masked *MaskError
 	if !errors.As(err, &masked) || !strings.Contains(masked.Error(), "ключ") {
 		t.Fatalf("printable Unicode was mangled: %v", err)
+	}
+}
+
+func TestKeyPolicyUnicodeFallbackDoesNotRebuildKeys(t *testing.T) {
+	policy, err := NewKeyPolicy(DefaultBindings()...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stripping and lowering the field key are the only allocations; the
+	// stored keys were normalized once in NewKeyPolicy.
+	allocs := testing.AllocsPerRun(100, func() { _, _ = policy.Decide(Field{Key: "имя_поля"}) })
+	if allocs > 2 {
+		t.Fatalf("unicode miss allocated %.0f times", allocs)
 	}
 }

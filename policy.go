@@ -81,15 +81,21 @@ func (f PolicyFunc) Decide(field Field) (Decision, error) {
 	return f(field)
 }
 
-// Binding associates case-insensitive field keys with rules.
+// Binding associates field keys with a rule. Keys compare equal when they
+// differ only by Unicode case or by the separator characters "_", "-", and
+// ".", so access_token, access-token, and accessToken are equivalent.
 type Binding struct {
 	Keys []string
 	Rule Rule
 }
 
-// KeyPolicy matches complete keys using Unicode-aware EqualFold.
+// KeyPolicy matches complete keys across all naming conventions: keys compare
+// equal when they differ only by Unicode case or by the separator characters
+// "_", "-", and ".".
 type KeyPolicy struct {
-	bindings  []Binding
+	// ordered holds every key with its separators already stripped, in
+	// declaration order, for the Unicode fallback scan.
+	ordered   []keyEntry
 	entries   map[string][]keyEntry
 	asciiOnly bool
 }
@@ -108,12 +114,52 @@ func isASCII(value string) bool {
 	return true
 }
 
-// NewKeyPolicy validates and compiles key bindings. Duplicate detection is
-// a one-time cost paid here so conflicting fold-equivalent keys never reach
-// the per-decision hot path. Such keys are accepted only when they refer to
-// the same comparable Rule instance; RuleFunc values are not comparable, so
-// repeated fold-equivalent keys using a custom callback are rejected even when
-// the callback function is the same.
+// stripKeySeparators removes the separators that naming conventions disagree
+// on, so access_token, access-token and accessToken compare equal.
+func stripKeySeparators(key string) string {
+	if !strings.ContainsAny(key, "_-.") {
+		return key
+	}
+	stripped := make([]byte, 0, len(key))
+	for index := range len(key) {
+		switch key[index] {
+		case '_', '-', '.':
+		default:
+			stripped = append(stripped, key[index])
+		}
+	}
+	return string(stripped)
+}
+
+// asciiKeyBufferSize bounds the stack buffer Decide normalizes ASCII keys
+// into; longer keys take the allocating path.
+const asciiKeyBufferSize = 64
+
+// appendNormalizedASCIIKey lowercases an ASCII key and drops its separators
+// in one pass, producing the same form as ToLower(stripKeySeparators(key)).
+func appendNormalizedASCIIKey(dst []byte, key string) []byte {
+	for index := range len(key) {
+		char := key[index]
+		switch {
+		case char == '_' || char == '-' || char == '.':
+		case 'A' <= char && char <= 'Z':
+			dst = append(dst, char+('a'-'A'))
+		default:
+			dst = append(dst, char)
+		}
+	}
+	return dst
+}
+
+// NewKeyPolicy validates and compiles key bindings. Keys compare equal when
+// they differ only by Unicode case or by the separator characters "_", "-",
+// and "."; a key that becomes empty once those separators are removed is
+// rejected as an empty key. Duplicate detection is a one-time cost paid here
+// so conflicting fold-equivalent keys never reach the per-decision hot path.
+// Such keys are accepted only when they refer to the same comparable Rule
+// instance; RuleFunc values are not comparable, so repeated fold-equivalent
+// keys using a custom callback are rejected even when the callback function
+// is the same.
 func NewKeyPolicy(bindings ...Binding) (*KeyPolicy, error) {
 	type acceptedKey struct {
 		text string
@@ -128,29 +174,33 @@ func NewKeyPolicy(bindings ...Binding) (*KeyPolicy, error) {
 		}
 		keys := append([]string(nil), binding.Keys...)
 		for _, key := range keys {
-			if key == "" {
+			stripped := stripKeySeparators(key)
+			if stripped == "" {
 				return nil, fmt.Errorf("%w: empty key", errorSentinels[CodeInvalidConfig])
 			}
 			if !isASCII(key) {
 				asciiOnly = false
 			}
 			for _, previous := range accepted {
-				if strings.EqualFold(previous.text, key) && !sameRule(previous.rule, binding.Rule) {
+				if strings.EqualFold(previous.text, stripped) && !sameRule(previous.rule, binding.Rule) {
 					return nil, fmt.Errorf("%w: duplicate key", errorSentinels[CodeInvalidConfig])
 				}
 			}
-			accepted = append(accepted, acceptedKey{text: key, rule: binding.Rule})
+			accepted = append(accepted, acceptedKey{text: stripped, rule: binding.Rule})
 		}
 		copyBindings = append(copyBindings, Binding{Keys: keys, Rule: binding.Rule})
 	}
 	entries := make(map[string][]keyEntry)
+	ordered := make([]keyEntry, 0, len(accepted))
 	for _, binding := range copyBindings {
 		for _, key := range binding.Keys {
-			lowered := strings.ToLower(key)
-			entries[lowered] = append(entries[lowered], keyEntry{key: key, rule: binding.Rule})
+			entry := keyEntry{key: stripKeySeparators(key), rule: binding.Rule}
+			lowered := strings.ToLower(entry.key)
+			entries[lowered] = append(entries[lowered], entry)
+			ordered = append(ordered, entry)
 		}
 	}
-	return &KeyPolicy{bindings: copyBindings, entries: entries, asciiOnly: asciiOnly}, nil
+	return &KeyPolicy{ordered: ordered, entries: entries, asciiOnly: asciiOnly}, nil
 }
 
 // Decide implements Policy.
@@ -158,10 +208,20 @@ func (p *KeyPolicy) Decide(field Field) (Decision, error) {
 	if p == nil {
 		return Decision{}, fmt.Errorf("%w: nil key policy", errorSentinels[CodePolicyFailure])
 	}
-	if field.Key == "" {
+	if p.asciiOnly && isASCII(field.Key) && len(field.Key) <= asciiKeyBufferSize {
+		var buffer [asciiKeyBufferSize]byte
+		// The string conversion in a map index does not allocate.
+		entries := p.entries[string(appendNormalizedASCIIKey(buffer[:0], field.Key))]
+		if len(entries) == 0 {
+			return Decision{}, nil
+		}
+		return Decision{Rule: entries[0].rule}, nil
+	}
+	stripped := stripKeySeparators(field.Key)
+	if stripped == "" {
 		return Decision{}, nil
 	}
-	entries := p.entries[strings.ToLower(field.Key)]
+	entries := p.entries[strings.ToLower(stripped)]
 	if p.asciiOnly && isASCII(field.Key) {
 		if len(entries) == 0 {
 			return Decision{}, nil
@@ -169,17 +229,15 @@ func (p *KeyPolicy) Decide(field Field) (Decision, error) {
 		return Decision{Rule: entries[0].rule}, nil
 	}
 	for _, entry := range entries {
-		if strings.EqualFold(entry.key, field.Key) {
+		if strings.EqualFold(entry.key, stripped) {
 			return Decision{Rule: entry.rule}, nil
 		}
 	}
 	// The lowercase bucket is the fast path. This scan preserves stdlib
 	// EqualFold parity for rare cross-script pairs such as k versus KELVIN.
-	for _, binding := range p.bindings {
-		for _, key := range binding.Keys {
-			if strings.EqualFold(key, field.Key) {
-				return Decision{Rule: binding.Rule}, nil
-			}
+	for _, entry := range p.ordered {
+		if strings.EqualFold(entry.key, stripped) {
+			return Decision{Rule: entry.rule}, nil
 		}
 	}
 	return Decision{}, nil
@@ -187,12 +245,12 @@ func (p *KeyPolicy) Decide(field Field) (Decision, error) {
 
 var defaultBindings = []Binding{
 	{Keys: []string{"password", "passwd", "passphrase"}, Rule: PasswordRule()},
-	{Keys: []string{"token", "access_token", "refresh_token", "api_key", "apikey", "secret"}, Rule: TokenRule()},
+	{Keys: []string{"token", "access_token", "refresh_token", "api_key", "apikey", "secret", "client_secret", "id_token", "private_key", "session_id", "credentials", "auth_token"}, Rule: TokenRule()},
 	{Keys: []string{"email", "e-mail"}, Rule: EmailRule()},
 	{Keys: []string{"phone", "phone_number", "mobile"}, Rule: PhoneRule()},
 	{Keys: []string{"id", "user_id", "customer_id"}, Rule: IDRule()},
 	{Keys: []string{"card", "card_number", "pan"}, Rule: CardRule()},
-	{Keys: []string{"authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token", "proxy-authorization"}, Rule: FullRule()},
+	{Keys: []string{"authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token", "proxy-authorization", "x-csrf-token", "cvv", "cvc"}, Rule: FullRule()},
 }
 
 // DefaultBindings returns a defensive copy of the built-in key policy.
