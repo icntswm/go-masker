@@ -367,9 +367,9 @@ would read any dependency that handles secrets.
 
 The streaming JSON walker, bounded key cache, direct encoder, and per-masker
 reflection metadata cache are designed for predictable behavior on nested and
-wide payloads. On an M3 Pro, full redaction of a string costs 15 ns and
+wide payloads. On an M3 Pro, full redaction of a string costs 16 ns and
 allocates nothing, and a 10,000-record JSON document is masked at roughly
-134 MB/s. Throughput stays flat as documents grow wider or longer, which
+130 MB/s. Throughput stays flat as documents grow wider or longer, which
 matters more than the absolute numbers; the method and the full tables are in
 [PERFORMANCE.md](PERFORMANCE.md).
 
