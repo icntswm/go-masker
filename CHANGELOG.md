@@ -12,6 +12,8 @@ API may still change, and every such change is listed here.
 
 - `WithTagRule(name, rule)` option registers a custom rule under the struct
   tag grammar; built-in names and `omit` cannot be redefined.
+- `slogmask` package: `ReplaceAttr(core)` masks `log/slog` attributes through
+  a core masker and fails closed to the redaction marker.
 
 ### Changed
 
