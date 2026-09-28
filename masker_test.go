@@ -258,6 +258,30 @@ func TestStructTagsAndJSONOmit(t *testing.T) {
 	}
 }
 
+func TestJSONDashCommaTagNamesField(t *testing.T) {
+	type payload struct {
+		Dash string `json:"-,"` //nolint:staticcheck // SA5008: the ambiguous tag is the case under test.
+	}
+	result, err := newTestMasker(t).MaskAny(payload{Dash: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := result.(map[string]any)["-"]; got != "x" {
+		t.Fatalf(`json:"-," must name the field "-", got %#v`, result)
+	}
+}
+
+func TestWithMaxDepthIsBounded(t *testing.T) {
+	if _, err := New(DefaultPolicy(), WithMaxDepth(maxDepthLimit+1)); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("expected invalid config above the depth ceiling, got %v", err)
+	}
+	m := newTestMasker(t, WithMaxDepth(maxDepthLimit), WithMaxNodes(1<<30))
+	deep := strings.Repeat("[", maxDepthLimit+2) + strings.Repeat("]", maxDepthLimit+2)
+	if _, err := m.MaskJSON([]byte(deep)); !errors.Is(err, ErrDepthLimit) {
+		t.Fatalf("expected depth limit at the ceiling, got %v", err)
+	}
+}
+
 func TestBuiltinRulesReuseSingletons(t *testing.T) {
 	constructors := []func() Rule{
 		PasswordRule,
@@ -927,7 +951,19 @@ func TestKeyPolicyRejectsConflictingDuplicateKeys(t *testing.T) {
 	); err != nil {
 		t.Fatalf("same-rule duplicates must be accepted, got %v", err)
 	}
+	// A comparable type whose dynamic value is not: == on it panics.
+	if _, err := NewKeyPolicy(
+		Binding{Keys: []string{"a"}, Rule: boxedRule{inner: func() {}}},
+		Binding{Keys: []string{"A"}, Rule: boxedRule{inner: func() {}}},
+	); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("expected duplicate conflict error, got %v", err)
+	}
 }
+
+type boxedRule struct{ inner any }
+
+func (boxedRule) Name() string                          { return "boxed" }
+func (boxedRule) Apply(input RuleInput) (string, error) { return input.Redaction, nil }
 
 // largeObjectDocument builds a root object past the large-object threshold
 // whose member count still fits the pooled member slice, which is what sends

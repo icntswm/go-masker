@@ -295,10 +295,12 @@ func sameRule(left, right Rule) bool {
 	if leftValue.Type() != rightValue.Type() {
 		return false
 	}
-	if leftValue.Type().Comparable() {
-		return leftValue.Interface() == rightValue.Interface()
+	// Value.Comparable looks at the dynamic values too: a comparable struct
+	// holding a func in an interface field would make == panic.
+	if !leftValue.Comparable() || !rightValue.Comparable() {
+		return false
 	}
-	return false
+	return leftValue.Equal(rightValue)
 }
 
 func policyNeedsPaths(policy Policy) bool {

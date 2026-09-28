@@ -44,8 +44,8 @@ list misses:
 - **Depth is not special.** The same policy applies to a nested JSON object, a
   struct field, a map inside a slice, a URL query parameter and an HTTP header.
 - **Hostile input stays bounded.** Traversal depth, visited nodes and input
-  size are capped; JSON is scanned iteratively, so deeply nested input cannot
-  exhaust the goroutine stack.
+  size are capped, and the depth limit itself cannot exceed 10,000, so deeply
+  nested input cannot exhaust the goroutine stack.
 - **Output does not drift.** Masking a fixed corpus under Go 1.23 through 1.27
   produces byte-identical results; the digests are recorded in
   [PERFORMANCE.md](PERFORMANCE.md).
@@ -320,8 +320,9 @@ replacing it is the one change that reintroduces the leak the library prevents.
 ## Limits and security
 
 Default limits are depth 32, 100,000 visited nodes, and 8 MiB of JSON input.
-The JSON walker uses an iterative skipped-value scanner, so deep hostile input
-cannot exhaust the Go call stack. Memory still grows with the input because the
+Traversal recurses once per nesting level, so `WithMaxDepth` rejects values
+above 10,000: a Go stack overflow is fatal and could not fail closed. Input
+skipped after a limit trips is scanned iteratively. Memory still grows with the input because the
 public byte-slice and reader APIs retain the complete document during masking.
 
 Review custom policies and rules as security-sensitive code. A custom rule's
