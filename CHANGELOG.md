@@ -8,6 +8,14 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+### Changed
+
+- Key comparison ignores the `_`, `-`, and `.` separators in addition to
+  Unicode case, so `accessToken` and `access-token` are masked like
+  `access_token`; the default bindings gained `client_secret`, `id_token`,
+  `private_key`, `session_id`, `credentials`, `auth_token`, `x-csrf-token`,
+  `cvv`, and `cvc`.
+
 ### Fixed
 
 - `WithMaxDepth` rejects depths above 10,000. With both the depth and node

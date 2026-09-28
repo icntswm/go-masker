@@ -135,18 +135,20 @@ construction. Operations copy input containers and never mutate the source.
 
 ## What is masked
 
-`DefaultPolicy` matches complete field names case-insensitively. Its default
-bindings are:
+`DefaultPolicy` matches complete field names case-insensitively. The
+comparison also ignores the separator characters `_`, `-`, and `.`, so
+`accessToken`, `access-token`, and `ACCESS.TOKEN` all match the `access_token`
+binding. Its default bindings are:
 
 | Keys | Rule |
 | --- | --- |
 | `password`, `passwd`, `passphrase` | full |
-| `token`, `access_token`, `refresh_token`, `api_key`, `apikey`, `secret` | token |
+| `token`, `access_token`, `refresh_token`, `api_key`, `apikey`, `secret`, `client_secret`, `id_token`, `private_key`, `session_id`, `credentials`, `auth_token` | token |
 | `email`, `e-mail` | email |
 | `phone`, `phone_number`, `mobile` | phone |
 | `id`, `user_id`, `customer_id` | ID |
 | `card`, `card_number`, `pan` | card |
-| `authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `proxy-authorization` | full |
+| `authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `proxy-authorization`, `x-csrf-token`, `cvv`, `cvc` | full |
 
 Built-in rules are available directly through `PasswordRule`, `TokenRule`,
 `FullRule`, `EmailRule`, `PhoneRule`, `IDRule`, and `CardRule`.
@@ -178,7 +180,8 @@ A zero `Decision` means "no opinion". `Decision{Omit: true}` removes an object
 or map member entirely; array elements keep their position and become `null`,
 so the shape of a list is never altered.
 
-`NewKeyPolicy` rejects empty keys, nil rules, and fold-equivalent keys bound to
+`NewKeyPolicy` rejects empty keys (including keys that are made of separator
+characters only), nil rules, and fold-equivalent keys bound to
 different rules, so an ambiguous configuration fails at construction instead of
 resolving silently at run time.
 
