@@ -36,8 +36,14 @@ the root fallback.
 Inputs are never mutated and output containers do not alias source containers.
 Reflection map and slice result capacity is capped by the remaining node budget
 before traversal, so an attacker-controlled container length cannot force a
-proportional output preallocation before the node limit is checked. Successful
-inputs still produce complete normalized copies; resource failures return only
+proportional output preallocation before the node limit is checked. A byte
+slice rendered as base64 is charged one node per byte before it is encoded,
+and the copy a `MarshalText` receiver runs on is charged one node per copied
+slice element and element of a fixed-size array before it is made, and its
+slices count toward the depth limit. Only receivers without pointers or maps
+are copied; any other marshaler is walked like an ordinary value. `MarshalText` never sees
+the input's own storage, so a method that mutates its receiver cannot change
+the input. Successful inputs still produce complete normalized copies; resource failures return only
 the safe root fallback.
 
 Object-member collection uses bounded scratch storage and map-assisted duplicate

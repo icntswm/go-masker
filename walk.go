@@ -1,7 +1,10 @@
 package masker
 
 import (
+	"encoding"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"slices"
 	"strconv"
@@ -59,6 +62,10 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		return m.cfg.marker, true, maskError(CodeInvalidUTF8, "mask", field.Path)
 	}
 	reflected := reflect.ValueOf(value)
+	if textualValue(reflected) {
+		// The walker renders it through MarshalText after the decision.
+		return nil, false, nil
+	}
 	switch reflected.Kind() {
 	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
@@ -150,7 +157,14 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 			return nil
 		}
 	}
-	if value.Kind() == reflect.Map || value.Kind() == reflect.Slice {
+	// A value that renders as text is decided as a string, but MarshalText
+	// runs only once a rule or the safe output actually needs the text, so an
+	// omitted or fully redacted field never calls it.
+	textual := textualValue(value)
+	if textual {
+		field.Kind = KindString
+	}
+	if !textual && (value.Kind() == reflect.Map || value.Kind() == reflect.Slice) {
 		if !w.track(value, field, depth) {
 			w.releaseTracked(trackedStart)
 			return w.masker.cfg.marker
@@ -160,14 +174,22 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	if field.Kind == KindInvalid {
 		field.Kind = kindOfReflect(value)
 	}
-	if value.Kind() == reflect.String && !utf8.ValidString(value.String()) {
+	if !textual && value.Kind() == reflect.String && !utf8.ValidString(value.String()) {
 		w.fail(CodeInvalidUTF8, field, depth)
 		w.releaseTracked(trackedStart)
 		return w.masker.cfg.marker
 	}
-	if handled, result := w.applyFieldDecision(value, field, tag); handled {
+	if handled, result := w.applyFieldDecision(value, field, tag, depth); handled {
 		w.releaseTracked(trackedStart)
 		return result
+	}
+	if textual {
+		w.releaseTracked(trackedStart)
+		text, ok := w.renderText(value, field, depth)
+		if !ok {
+			return w.masker.cfg.marker
+		}
+		return w.safeScalar(reflect.ValueOf(text))
 	}
 
 	var result any
@@ -190,6 +212,104 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	return result
 }
 
+// textMarshalerType is the encoding.TextMarshaler interface type, resolved
+// once so the walker can detect it with a cheap Implements call.
+var textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
+
+// textualValue reports whether the walker renders value as text the way
+// encoding/json would: an encoding.TextMarshaler becomes its text and a
+// non-nil byte slice its base64 form. Only the type is inspected.
+func textualValue(value reflect.Value) bool {
+	return implementsTextMarshaler(value) || byteSliceValue(value)
+}
+
+// implementsTextMarshaler reports a value the walker renders through
+// MarshalText: the value, or a pointer to it when it is addressable, as in
+// encoding/json, implements encoding.TextMarshaler, and the method can run on
+// a copy that shares no memory with the input. Any other marshaler is walked
+// like an ordinary value, so user code never sees the input's storage.
+func implementsTextMarshaler(value reflect.Value) bool {
+	if !value.CanInterface() {
+		return false
+	}
+	typ := value.Type()
+	implements := typ.Implements(textMarshalerType) ||
+		value.CanAddr() && reflect.PointerTo(typ).Implements(textMarshalerType)
+	return implements && isolatableTextType(typ)
+}
+
+// byteSliceValue reports a non-nil byte slice encoded as base64. As in
+// encoding/json, a slice whose elements marshal themselves is walked instead.
+func byteSliceValue(value reflect.Value) bool {
+	if value.Kind() != reflect.Slice || value.IsNil() {
+		return false
+	}
+	elem := value.Type().Elem()
+	return elem.Kind() == reflect.Uint8 &&
+		!elem.Implements(textMarshalerType) && !reflect.PointerTo(elem).Implements(textMarshalerType)
+}
+
+// renderText renders a value textualValue accepted and records a failure.
+// MarshalText runs on an isolated copy of the value. A byte slice is charged
+// one node per byte before it is encoded, as it was when it was traversed
+// element by element, so its length cannot force a proportional allocation
+// past the node limit; copying a receiver is charged the same way.
+func (w *walker) renderText(value reflect.Value, field Field, depth int) (string, bool) {
+	if !implementsTextMarshaler(value) {
+		if !w.chargeCopy(value.Len()) {
+			w.fail(CodeNodeLimit, field, depth)
+			return "", false
+		}
+		return base64.StdEncoding.EncodeToString(value.Bytes()), true
+	}
+	receiver, code, failDepth := w.isolatedReceiver(value, depth)
+	if code != "" {
+		w.fail(code, field, failDepth)
+		return "", false
+	}
+	text, code := marshalText(receiver)
+	if code != "" {
+		w.fail(code, field, depth)
+		return "", false
+	}
+	return text, true
+}
+
+// marshalText calls MarshalText through a pointer to the receiver, or on the
+// value it points to when the method has a value receiver. A non-empty code
+// reports the error category a failing MarshalText is reduced to.
+func marshalText(receiver reflect.Value) (string, ErrorCode) {
+	marshaler, ok := receiver.Interface().(encoding.TextMarshaler)
+	if !ok || receiver.Type().Elem().Implements(textMarshalerType) {
+		marshaler, _ = receiver.Elem().Interface().(encoding.TextMarshaler)
+	}
+	encoded, err := marshalTextSafely(marshaler)
+	switch {
+	case err != nil:
+		if isPanicError(err) {
+			return "", CodePanic
+		}
+		return "", CodeUnsupportedType
+	case !utf8.ValidString(string(encoded)):
+		return "", CodeInvalidUTF8
+	default:
+		return string(encoded), ""
+	}
+}
+
+// marshalTextSafely calls MarshalText and converts a panic into the safe
+// panic category, so hostile implementations fail closed like other
+// caller-supplied callbacks.
+func marshalTextSafely(marshaler encoding.TextMarshaler) (text []byte, err error) {
+	defer func() {
+		if recover() != nil {
+			text = nil
+			err = fmt.Errorf("%w: marshal text panic", errorSentinels[CodePanic])
+		}
+	}()
+	return marshaler.MarshalText()
+}
+
 func (w *walker) track(value reflect.Value, field Field, depth int) bool {
 	id, ok := valueIdentity(value)
 	if !ok {
@@ -207,6 +327,8 @@ func (w *walker) track(value reflect.Value, field Field, depth int) bool {
 	return true
 }
 
+// releaseTracked removes the identities pushed since start, so a sibling
+// branch never sees an ancestor's identity as an active cycle.
 func (w *walker) releaseTracked(start int) {
 	for index := len(w.activeStack) - 1; index >= start; index-- {
 		delete(w.active, w.activeStack[index])
@@ -214,7 +336,7 @@ func (w *walker) releaseTracked(start int) {
 	w.activeStack = w.activeStack[:start]
 }
 
-func (w *walker) applyFieldDecision(value reflect.Value, field Field, tag string) (bool, any) {
+func (w *walker) applyFieldDecision(value reflect.Value, field Field, tag string, depth int) (bool, any) {
 	if tag != "" {
 		if tag == "omit" {
 			return true, omittedResult
@@ -224,7 +346,7 @@ func (w *walker) applyFieldDecision(value reflect.Value, field Field, tag string
 			w.fail(CodeInvalidConfig, field, 0)
 			return true, w.masker.cfg.marker
 		}
-		return true, w.apply(rule, value, field)
+		return true, w.apply(rule, value, field, depth)
 	}
 
 	decision, err := callPolicy(w.masker.policy, field)
@@ -241,15 +363,27 @@ func (w *walker) applyFieldDecision(value reflect.Value, field Field, tag string
 	}
 	if !isNilRule(decision.Rule) {
 		if field.Source == SourceHeader {
-			return true, w.apply(FullRule(), value, field)
+			return true, w.apply(FullRule(), value, field, depth)
 		}
-		return true, w.apply(decision.Rule, value, field)
+		return true, w.apply(decision.Rule, value, field, depth)
 	}
 	return false, nil
 }
 
-func (w *walker) apply(rule Rule, value reflect.Value, field Field) any {
-	text := scalarText(value)
+func (w *walker) apply(rule Rule, value reflect.Value, field Field, depth int) any {
+	var text string
+	switch {
+	case rule == Rule(fullRule) || rule == Rule(passwordRule) || rule == Rule(tokenRule):
+		// These rules redact fully and ignore the value, so it is never rendered.
+	case textualValue(value):
+		rendered, ok := w.renderText(value, field, depth)
+		if !ok {
+			return w.masker.cfg.marker
+		}
+		text = rendered
+	default:
+		text = scalarText(value)
+	}
 	result, err := applyRule(rule, RuleInput{Value: text, Kind: field.Kind, Redaction: w.masker.cfg.marker})
 	if err != nil {
 		code := CodeRuleFailure
@@ -404,7 +538,7 @@ func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, met
 		if w.nodes > w.masker.cfg.maxNodes {
 			w.fail(CodeNodeLimit, field, depth)
 			result = w.masker.cfg.marker
-		} else if handled, decisionResult := w.applyCompiledFieldDecision(value, field, metadata); handled {
+		} else if handled, decisionResult := w.applyCompiledFieldDecision(value, field, metadata, depth); handled {
 			result = decisionResult
 		} else {
 			result = w.safeScalar(value)
@@ -413,7 +547,7 @@ func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, met
 	return result
 }
 
-func (w *walker) applyCompiledFieldDecision(value reflect.Value, field Field, metadata structFieldMetadata) (bool, any) {
+func (w *walker) applyCompiledFieldDecision(value reflect.Value, field Field, metadata structFieldMetadata, depth int) (bool, any) {
 	if metadata.maskTag != "" {
 		if metadata.maskTag == "omit" {
 			return true, omittedResult
@@ -422,18 +556,18 @@ func (w *walker) applyCompiledFieldDecision(value reflect.Value, field Field, me
 			w.fail(CodeInvalidConfig, field, 0)
 			return true, w.masker.cfg.marker
 		}
-		return true, w.apply(metadata.tagRule, value, field)
+		return true, w.apply(metadata.tagRule, value, field, depth)
 	}
 	if metadata.policy.known {
 		if metadata.policy.omit {
 			return true, omittedResult
 		}
 		if !isNilRule(metadata.policy.rule) {
-			return true, w.apply(metadata.policy.rule, value, field)
+			return true, w.apply(metadata.policy.rule, value, field, depth)
 		}
 		return false, nil
 	}
-	return w.applyFieldDecision(value, field, "")
+	return w.applyFieldDecision(value, field, "", depth)
 }
 
 func (w *walker) dereference(field Field, depth int) bool {
