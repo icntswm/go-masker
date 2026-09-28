@@ -830,10 +830,11 @@ func fieldByIndex(value reflect.Value, index []int) (reflect.Value, bool) {
 func jsonFieldName(field reflect.StructField) (string, bool) {
 	tag, ok := field.Tag.Lookup("json")
 	if ok {
-		name := strings.Split(tag, ",")[0]
-		if name == "-" {
+		// Only a bare "-" omits the field; "-," names it "-", as in encoding/json.
+		if tag == "-" {
 			return "", true
 		}
+		name, _, _ := strings.Cut(tag, ",")
 		if name != "" {
 			return name, false
 		}
@@ -846,8 +847,8 @@ func jsonFieldTagged(field reflect.StructField) bool {
 	if !ok {
 		return false
 	}
-	name := strings.Split(tag, ",")[0]
-	return name != "" && name != "-"
+	name, _, _ := strings.Cut(tag, ",")
+	return name != "" && tag != "-"
 }
 
 func structMaskTag(field reflect.StructField, tagName string) string {

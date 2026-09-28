@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
+## [Unreleased]
+
+### Fixed
+
+- `WithMaxDepth` rejects depths above 10,000. With both the depth and node
+  limits raised, deeply nested JSON overflowed the goroutine stack, which is a
+  fatal error rather than a recoverable failure.
+- `NewKeyPolicy` no longer panics when two fold-equivalent keys use a
+  comparable Rule type holding a non-comparable value, such as a func in an
+  interface field; such keys are rejected as duplicates.
+- A struct field tagged `json:"-,"` is kept under the name `-`, as
+  `encoding/json` does, instead of being dropped.
+
 ## [0.1.1] - 2026-08-28
 
 No change to the library: the shipped code is identical to `v0.1.0`. This

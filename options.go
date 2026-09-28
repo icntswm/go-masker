@@ -46,10 +46,16 @@ func WithRedaction(marker string) Option {
 	}
 }
 
-// WithMaxDepth limits recursive traversal depth. Zero permits root values only.
+// maxDepthLimit is the largest depth WithMaxDepth accepts. Traversal recurses
+// once per nesting level, and a Go stack overflow is fatal rather than a panic
+// that could be recovered and failed closed, so the depth cannot be unbounded.
+const maxDepthLimit = 10_000
+
+// WithMaxDepth limits recursive traversal depth. Zero permits root values only;
+// values above 10000 are rejected.
 func WithMaxDepth(depth int) Option {
 	return func(cfg *config) error {
-		if depth < 0 {
+		if depth < 0 || depth > maxDepthLimit {
 			return fmt.Errorf("%w: max depth", errorSentinels[CodeInvalidConfig])
 		}
 		cfg.maxDepth = depth
