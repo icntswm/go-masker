@@ -27,7 +27,8 @@ It provides one policy and rule model for:
 - arbitrary nested Go values;
 - JSON documents and readers;
 - struct tags;
-- HTTP headers and URLs through `httpmask`.
+- HTTP headers and URLs through `httpmask`;
+- `log/slog` attributes through `slogmask`.
 
 The core has no third-party runtime dependencies and does not depend on an HTTP
 framework or logging library.
@@ -67,6 +68,7 @@ Each of those claims is checked by the suite; see
 - [JSON](#json)
 - [Struct tags](#struct-tags)
 - [HTTP headers and URLs](#http-headers-and-urls)
+- [log/slog](#logslog)
 - [Errors and fail-closed behavior](#errors-and-fail-closed-behavior)
 - [Limits and security](#limits-and-security)
 - [How it is tested](#how-it-is-tested)
@@ -315,6 +317,25 @@ maskedURL, err := adapter.URLString(
 Sensitive query parameters use the core policy. Query keys are sorted and URL
 escaping may be normalized. URL fragments are redacted by default, because an
 OAuth implicit-flow token arrives there; `WithPreserveFragment` keeps them.
+
+## log/slog
+
+The `slogmask` adapter plugs the core policy into any `slog` handler through
+`ReplaceAttr`:
+
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	ReplaceAttr: slogmask.ReplaceAttr(m),
+}))
+logger.Info("login", "user", "alice", "password", "hunter2")
+// {"time":"…","level":"INFO","msg":"login","user":"alice","password":"[REDACTED]"}
+```
+
+Attributes in groups are matched by their own key, with the group names in the
+policy path. A safe scalar keeps its type, a masked one is logged as a string,
+an `error` is masked as its text, and an `Omit` decision drops the attribute.
+The built-in time, level, message, and source attributes, and the message text
+itself, are not masked: pass secrets as attributes, never in the message.
 
 ## Errors and fail-closed behavior
 

@@ -17,7 +17,8 @@ The initial scope includes:
 - nested maps, slices, arrays, pointers, interfaces, and structs;
 - built-in struct tags;
 - HTTP headers and URLs through `httpmask`;
-- logger adapters for `slog`, `zerolog`, and `zap` are out of scope for now.
+- `log/slog` attributes through `slogmask`;
+- logger adapters for `zerolog` and `zap` are out of scope for now.
 
 The security properties are more important than preserving the exact input
 shape or maximizing throughput:
@@ -86,6 +87,10 @@ go-masker/
 ├── httpmask/
 │   ├── doc.go
 │   ├── adapter.go
+│   └── *_test.go
+├── slogmask/
+│   ├── doc.go
+│   ├── replace.go
 │   └── *_test.go
 ├── testdata/
 │   └── security_decisions/
@@ -776,7 +781,7 @@ The following items are outside the current scope:
 - JSON Lines support;
 - integer map keys;
 - optional code generation;
-- `slog`, `zerolog`, and `zap` adapters;
+- `zerolog` and `zap` adapters;
 - CookieNamePolicy;
 - partial-result mode that returns a safe partial tree together with local
   errors;
