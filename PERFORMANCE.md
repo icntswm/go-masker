@@ -31,10 +31,10 @@ for capacity planning.
 | `KeyPolicy`, empty key | 27.5 | 24 | 1 |
 | `MaskValue`, scalar, rule applied | 100.8 | 32 | 2 |
 | `MaskValue`, scalar, no rule | 99.0 | 40 | 2 |
-| `MaskAny`, scalar | 60.3 | 16 | 1 |
+| `MaskAny`, scalar | 70.7 | 16 | 1 |
 | `MaskAny`, flat struct | 269.4 | 432 | 7 |
 | `MaskAny`, wide struct | 1,026 | 1,736 | 20 |
-| `MaskAny`, nested/tagged struct | 1,410 | 1,800 | 23 |
+| `MaskAny`, nested/tagged struct | 1,575 | 1,800 | 23 |
 | `MaskAny`, nested map | 239,970 | 161,262 | 4,120 |
 | `httpmask.Headers`, mixed set | 1,366 | 928 | 34 |
 | `httpmask.URL`, query | 1,383 | 840 | 24 |

@@ -2,16 +2,19 @@ package masker
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -378,6 +381,98 @@ func TestStructMetadataNilEmbeddedPointer(t *testing.T) {
 	masked := result.(map[string]any)
 	if len(masked) != 1 || masked["name"] != "visible" {
 		t.Fatalf("unexpected nil embedded result: %#v", masked)
+	}
+}
+
+type textMarshalerLevel int
+
+func (l textMarshalerLevel) MarshalText() ([]byte, error) { return []byte("debug"), nil }
+
+type failingTextMarshaler struct{}
+
+func (failingTextMarshaler) MarshalText() ([]byte, error) {
+	return nil, errors.New("unsafe detail")
+}
+
+type panickingTextMarshaler struct{}
+
+func (panickingTextMarshaler) MarshalText() ([]byte, error) { panic("unsafe detail") }
+
+type pointerReceiverTextMarshaler int
+
+func (p *pointerReceiverTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte("pointer"), nil
+}
+
+func TestTextMarshalerAndBytes(t *testing.T) {
+	at := time.Date(2026, 9, 28, 8, 30, 0, 0, time.UTC)
+	m := newTestMasker(t, WithPreserveSafeTypes())
+
+	payload := struct {
+		At    time.Time
+		IP    net.IP
+		Raw   []byte
+		Level textMarshalerLevel
+	}{At: at, IP: net.IP{10, 0, 0, 1}, Raw: []byte{1, 2, 3}, Level: 2}
+	result, err := m.MaskAny(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	masked := result.(map[string]any)
+	if masked["At"] != at.Format(time.RFC3339Nano) {
+		t.Fatalf("unexpected time value: %#v", masked["At"])
+	}
+	if masked["IP"] != "10.0.0.1" {
+		t.Fatalf("unexpected IP value: %#v", masked["IP"])
+	}
+	if masked["Raw"] != base64.StdEncoding.EncodeToString([]byte{1, 2, 3}) {
+		t.Fatalf("unexpected byte-slice value: %#v", masked["Raw"])
+	}
+	if masked["Level"] != "debug" {
+		t.Fatalf("unexpected marshaler value: %#v", masked["Level"])
+	}
+
+	textResult, err := m.MaskValue("token", at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if textResult != DefaultRedactionMarker {
+		t.Fatalf("unexpected masked time under a sensitive key: %#v", textResult)
+	}
+
+	failingResult, err := m.MaskAny(map[string]any{"a": failingTextMarshaler{}})
+	if err == nil || !errors.Is(err, ErrUnsupportedType) {
+		t.Fatalf("expected unsupported type for a failing marshaler, got %v", err)
+	}
+	if failingResult != DefaultRedactionMarker {
+		t.Fatalf("expected root fallback, got %#v", failingResult)
+	}
+
+	panicResult, err := m.MaskAny(map[string]any{"a": panickingTextMarshaler{}})
+	if err == nil || !errors.Is(err, ErrPanic) {
+		t.Fatalf("expected panic category for a panicking marshaler, got %v", err)
+	}
+	if panicResult != DefaultRedactionMarker {
+		t.Fatalf("expected root fallback, got %#v", panicResult)
+	}
+
+	pointerResult, err := m.MaskAny(&struct {
+		V pointerReceiverTextMarshaler
+	}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pointerResult.(map[string]any)["V"]; got != "pointer" {
+		t.Fatalf("pointer receiver was not called: %#v", got)
+	}
+
+	arrayResult, err := m.MaskAny(map[string]any{"raw": [3]byte{1, 2, 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, ok := arrayResult.(map[string]any)["raw"].([]any)
+	if !ok || len(raw) != 3 {
+		t.Fatalf("byte array was converted instead of being walked: %#v", arrayResult.(map[string]any)["raw"])
 	}
 }
 
@@ -1383,4 +1478,355 @@ func TestKeyPolicyUnicodeFallbackDoesNotRebuildKeys(t *testing.T) {
 	if allocs > 2 {
 		t.Fatalf("unicode miss allocated %.0f times", allocs)
 	}
+}
+
+type textOctet uint8
+
+func (textOctet) MarshalText() ([]byte, error) { return []byte("octet"), nil }
+
+type mutatingBytesMarshaler []byte
+
+func (b mutatingBytesMarshaler) MarshalText() ([]byte, error) {
+	text := string(b)
+	for index := range b {
+		b[index] = 'x'
+	}
+	return []byte(text), nil
+}
+
+type nestedMutatingMarshaler struct {
+	Items  []string
+	Labels map[string]string
+	Next   *nestedMutatingMarshaler
+}
+
+func (n *nestedMutatingMarshaler) MarshalText() ([]byte, error) {
+	text := n.Items[0]
+	n.Items[0] = "changed"
+	n.Labels["k"] = "changed"
+	if n.Next != nil {
+		n.Next.Items = nil
+	}
+	return []byte(text), nil
+}
+
+type opaqueTextMarshaler struct {
+	Name  string
+	cache *string
+}
+
+func (opaqueTextMarshaler) MarshalText() ([]byte, error) {
+	panic("an opaque receiver must not be called")
+}
+
+type cachingTextMarshaler struct{ calls int }
+
+type byteBackedTextMarshaler []byte
+
+func (byteBackedTextMarshaler) MarshalText() ([]byte, error) { return []byte("short"), nil }
+
+func (c *cachingTextMarshaler) MarshalText() ([]byte, error) {
+	c.calls++
+	return []byte("cached"), nil
+}
+
+func TestTextMarshalerIsolation(t *testing.T) {
+	m := newTestMasker(t)
+	raw := mutatingBytesMarshaler("abc")
+	if got, err := m.MaskAny(map[string]any{"v": raw}); err != nil || got.(map[string]any)["v"] != "abc" {
+		t.Fatalf("byte-backed marshaler: %#v %v", got, err)
+	}
+	if string(raw) != "abc" {
+		t.Fatalf("a value receiver mutated the input: %q", raw)
+	}
+
+	input := &struct{ Value nestedMutatingMarshaler }{
+		Value: nestedMutatingMarshaler{Items: []string{"head"}, Labels: map[string]string{"k": "v"}},
+	}
+	want := map[string]any{"Value": map[string]any{
+		"Items": []any{"head"}, "Labels": map[string]any{"k": "v"}, "Next": nil,
+	}}
+	if got, err := m.MaskAny(input); err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("a marshaler holding pointers and maps was not walked: %#v %v", got, err)
+	}
+	if input.Value.Items[0] != "head" || input.Value.Labels["k"] != "v" {
+		t.Fatalf("a pointer receiver mutated nested input: %#v", input.Value)
+	}
+
+	cached := "dummy-cache"
+	got, err := m.MaskAny(map[string]any{"v": opaqueTextMarshaler{Name: "n", cache: &cached}})
+	if err != nil || !reflect.DeepEqual(got, map[string]any{"v": map[string]any{"Name": "n"}}) {
+		t.Fatalf("a receiver that cannot be isolated was not walked: %#v %v", got, err)
+	}
+
+	stamp := time.Date(2026, 9, 29, 10, 0, 0, 0, time.UTC)
+	if got, err := m.MaskAny(map[string]any{"at": stamp}); err != nil || got.(map[string]any)["at"] != "2026-09-29T10:00:00Z" {
+		t.Fatalf("time.Time: %#v %v", got, err)
+	}
+}
+
+func TestTextMarshalerReviewCases(t *testing.T) {
+	m := newTestMasker(t)
+	scalar, err := m.MaskValue("level", textMarshalerLevel(2))
+	if err != nil || scalar != "debug" {
+		t.Fatalf("scalar fast path skipped MarshalText: %#v %v", scalar, err)
+	}
+
+	policy := PolicyFunc(func(field Field) (Decision, error) {
+		switch field.Key {
+		case "omitted":
+			return Decision{Omit: true}, nil
+		case "full":
+			return Decision{Rule: FullRule()}, nil
+		}
+		return Decision{}, nil
+	})
+	decided, err := New(Chain(policy, DefaultPolicy()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := decided.MaskAny(map[string]any{
+		"omitted":  failingTextMarshaler{},
+		"full":     panickingTextMarshaler{},
+		"password": failingTextMarshaler{},
+		"token":    panickingTextMarshaler{},
+		"kept":     "value",
+	})
+	if err != nil {
+		t.Fatalf("a fully redacting decision ran MarshalText: %v", err)
+	}
+	masked := result.(map[string]any)
+	if _, present := masked["omitted"]; present || masked["full"] != DefaultRedactionMarker ||
+		masked["password"] != DefaultRedactionMarker || masked["token"] != DefaultRedactionMarker || masked["kept"] != "value" {
+		t.Fatalf("unexpected decisions: %#v", masked)
+	}
+
+	partial, err := NewRule("first", func(input RuleInput) (string, error) { return input.Value[:1], nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruled, err := New(PolicyFunc(func(Field) (Decision, error) { return Decision{Rule: partial}, nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ruled.MaskValue("level", textMarshalerLevel(2)); err != nil || got != "d" {
+		t.Fatalf("rule did not receive the rendered text: %#v %v", got, err)
+	}
+
+	octets, err := m.MaskAny(map[string]any{"o": []textOctet{1, 2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := octets.(map[string]any)["o"]; !reflect.DeepEqual(got, []any{"octet", "octet"}) {
+		t.Fatalf("byte-kind marshalers were base64-encoded: %#v", got)
+	}
+
+	limited, err := New(DefaultPolicy(), WithMaxNodes(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := limited.MaskAny(map[string]any{"blob": make([]byte, 1<<20)}); !errors.Is(err, ErrNodeLimit) {
+		t.Fatalf("a large byte slice bypassed the node limit: %v", err)
+	}
+	if got, err := limited.MaskAny(map[string]any{"blob": []byte("hi")}); err != nil || got.(map[string]any)["blob"] != "aGk=" {
+		t.Fatalf("a small byte slice within the limit: %#v %v", got, err)
+	}
+	input := &struct{ Value cachingTextMarshaler }{}
+	if got, err := m.MaskAny(input); err != nil || got.(map[string]any)["Value"] != "cached" {
+		t.Fatalf("pointer-receiver marshaler: %#v %v", got, err)
+	}
+	if input.Value.calls != 0 {
+		t.Fatalf("MarshalText mutated the input: %d calls recorded", input.Value.calls)
+	}
+
+	if got, err := m.MaskAny(map[string]any{"blob": byteBackedTextMarshaler(make([]byte, 1<<10))}); err != nil ||
+		got.(map[string]any)["blob"] != "short" {
+		t.Fatalf("a byte-backed marshaler: %#v %v", got, err)
+	}
+	if _, err := limited.MaskAny(map[string]any{"blob": byteBackedTextMarshaler(make([]byte, 1<<20))}); !errors.Is(err, ErrNodeLimit) {
+		t.Fatalf("copying a large receiver bypassed the node limit: %v", err)
+	}
+
+	partialLimited, err := New(PolicyFunc(func(field Field) (Decision, error) {
+		if field.Key == "blob" {
+			return Decision{Rule: partial}, nil
+		}
+		return Decision{}, nil
+	}), WithMaxNodes(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = partialLimited.MaskAny(map[string]any{"a": map[string]any{"blob": make([]byte, 64)}})
+	var maskErr *MaskError
+	if !errors.As(err, &maskErr) || maskErr.Code != CodeNodeLimit || maskErr.Depth != 2 {
+		t.Fatalf("ruled byte slice lost its depth: %#v", err)
+	}
+}
+
+type largeTextArray [1 << 20]byte
+
+func (largeTextArray) MarshalText() ([]byte, error) { return []byte("large"), nil }
+
+type cyclicTextMap map[string]cyclicTextMap
+
+func (cyclicTextMap) MarshalText() ([]byte, error) { return []byte("map"), nil }
+
+type selfTextNode struct {
+	Name string
+	Next *selfTextNode
+}
+
+func (*selfTextNode) MarshalText() ([]byte, error) { return []byte("self"), nil }
+
+type zeroSizedA struct{}
+
+type zeroSizedB struct{}
+
+type zeroSizedPointers struct {
+	A *zeroSizedA
+	B *zeroSizedB
+}
+
+func (zeroSizedPointers) MarshalText() ([]byte, error) { return []byte("zero"), nil }
+
+func TestTextMarshalerCopyGraphs(t *testing.T) {
+	core, err := New(DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	limited, err := New(DefaultPolicy(), WithMaxNodes(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := limited.MaskAny(map[string]any{"blob": largeTextArray{}}); !errors.Is(err, ErrNodeLimit) {
+		t.Fatalf("a large array receiver was copied past the node limit: %v", err)
+	}
+	cyclic := cyclicTextMap{}
+	cyclic["self"] = cyclic
+	if _, err := core.MaskAny(map[string]any{"map": cyclic}); !errors.Is(err, ErrCycle) {
+		t.Fatalf("a cyclic map receiver was not walked: %v", err)
+	}
+	got, err := core.MaskAny(map[string]any{
+		"node": &selfTextNode{Name: "n"},
+		"zero": zeroSizedPointers{A: &zeroSizedA{}, B: &zeroSizedB{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"node": map[string]any{"Name": "n", "Next": nil},
+		"zero": map[string]any{"A": map[string]any{}, "B": map[string]any{}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("receivers holding pointers or maps were not walked: got %#v, want %#v", got, want)
+	}
+}
+
+type textChain struct {
+	Next *textChain
+}
+
+func (*textChain) MarshalText() ([]byte, error) { return []byte("chain"), nil }
+
+type textViews struct {
+	A, B []int
+}
+
+func (v *textViews) MarshalText() ([]byte, error) {
+	v.A[0]++
+	return []byte(strconv.Itoa(v.B[0]) + "/" + strconv.Itoa(cap(v.A))), nil
+}
+
+func TestTextMarshalerCopyLimitsAndViews(t *testing.T) {
+	shallow, err := New(DefaultPolicy(), WithMaxDepth(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain := &textChain{}
+	for range 10 {
+		chain = &textChain{Next: chain}
+	}
+	if _, err := shallow.MaskAny(map[string]any{"chain": chain}); !errors.Is(err, ErrDepthLimit) {
+		t.Fatalf("a receiver deeper than the limit was copied: %v", err)
+	}
+
+	core, err := New(DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared := make([]int, 1, 4)
+	got, err := core.MaskAny(map[string]any{"v": &textViews{A: shared, B: shared}})
+	if err != nil || !reflect.DeepEqual(got, map[string]any{"v": "1/4"}) {
+		t.Fatalf("shared slice or capacity lost in the copy: %#v, %v", got, err)
+	}
+	if shared[0] != 0 {
+		t.Fatalf("MarshalText mutated the input: %v", shared)
+	}
+
+	buffer := []int{0, 0, 0}
+	if _, err := core.MaskAny(map[string]any{"v": &textViews{A: buffer[:2], B: buffer[1:]}}); !errors.Is(err, ErrUnsupportedType) {
+		t.Fatalf("overlapping slices were copied apart: %v", err)
+	}
+}
+
+func TestTextMarshalerCopyFailureDepth(t *testing.T) {
+	shallow, err := New(DefaultPolicy(), WithMaxDepth(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain := &textChain{}
+	for range 10 {
+		chain = &textChain{Next: chain}
+	}
+	_, err = shallow.MaskAny(map[string]any{"chain": chain})
+	var maskErr *MaskError
+	if !errors.As(err, &maskErr) || maskErr.Code != CodeDepthLimit || maskErr.Depth != 4 {
+		t.Fatalf("the depth failure lost the depth it occurred at: %#v", err)
+	}
+}
+
+type lockedTextMarshaler struct {
+	Name string
+	mu   sync.Mutex
+}
+
+func (m *lockedTextMarshaler) MarshalText() ([]byte, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return []byte(m.Name), nil
+}
+
+type countedTextMarshaler struct {
+	Name  string
+	Count sync.WaitGroup
+}
+
+func (*countedTextMarshaler) MarshalText() ([]byte, error) { return []byte("counted"), nil }
+
+func TestTextMarshalerWithLockIsNotCopied(t *testing.T) {
+	core, err := New(DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := &lockedTextMarshaler{Name: "n"}
+	held.mu.Lock()
+	done := make(chan any, 1)
+	go func() {
+		got, err := core.MaskAny(map[string]any{"v": held, "w": &countedTextMarshaler{Name: "c"}})
+		if err != nil {
+			done <- err
+			return
+		}
+		done <- got
+	}()
+	select {
+	case got := <-done:
+		want := map[string]any{"v": map[string]any{"Name": "n"}, "w": map[string]any{"Name": "c", "Count": map[string]any{}}}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("a marshaler holding a lock was not walked: %#v", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("MarshalText ran on a copy of a held lock")
+	}
+	held.mu.Unlock()
 }

@@ -15,6 +15,10 @@ API may still change, and every such change is listed here.
   `access_token`; the default bindings gained `client_secret`, `id_token`,
   `private_key`, `session_id`, `credentials`, `auth_token`, `x-csrf-token`,
   `cvv`, and `cvc`.
+- Reflection traversal masks an `encoding.TextMarshaler` as its text and a
+  `[]byte` as base64, matching `encoding/json`, instead of walking their fields
+  or bytes. `MarshalText` runs on a copy of the value; a marshaler that holds
+  pointers, maps, or locks is walked as before.
 
 ### Fixed
 

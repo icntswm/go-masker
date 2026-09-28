@@ -105,6 +105,13 @@ func isFlatScalarMetadata(typ reflect.Type, candidates []fieldCandidate, conflic
 		if len(candidate.index) != 1 || candidate.field.PkgPath != "" || candidate.field.Type.Kind() == reflect.Invalid {
 			return false
 		}
+		// A scalar-kind type can still render text, for example a named int
+		// with a MarshalText method. The flat fast path bypasses walk, so it
+		// must not hide such a value from the TextMarshaler conversion.
+		fieldType := candidate.field.Type
+		if fieldType.Implements(textMarshalerType) || reflect.PointerTo(fieldType).Implements(textMarshalerType) {
+			return false
+		}
 		switch candidate.field.Type.Kind() {
 		case reflect.Bool,
 			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,

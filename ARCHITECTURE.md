@@ -157,6 +157,22 @@ The normalized result contract is:
 - slices and arrays become newly allocated `[]any` values;
 - structs are represented by maps using their visible field names;
 - pointers and interfaces are unwrapped;
+- an `encoding.TextMarshaler` becomes its text and a non-nil `[]byte` its
+  standard base64 form, as `encoding/json` renders them; a byte slice whose
+  elements implement `MarshalText` is walked element by element instead, and
+  a failing or panicking `MarshalText` fails closed;
+- `MarshalText` runs on a copy of its receiver, so a method that updates its
+  receiver cannot mutate the input. Only receivers without pointers, maps,
+  channels, functions, interfaces, or locks are copied, and a slice in one
+  must hold reference-free elements, such as `net.IP` or `[]byte`: such a
+  value has no cycles or shared graph that a copy would have to rebuild. A
+  slice that appears twice stays shared in the copy and every slice keeps its
+  capacity; slices into overlapping but different storage, such as `buf[:2]`
+  and `buf[1:]`, fail with `ErrUnsupportedType`. Any other marshaler —
+  including one holding a reference in an unexported field or a lock such as
+  `sync.Mutex`, whose held copy would never unlock — is walked like an
+  ordinary value instead. `time.Time` and the `net/netip` address types are
+  trusted to only read their receiver and are copied shallowly;
 - unsupported values are never returned unchanged;
 - on successful masking, no input container is reused in the result.
 
@@ -474,8 +490,11 @@ with `Field` and `ConflictingField` only when ambiguity remains, while the
 public operation returns root redaction. Unexported anonymous non-struct
 fields are ignored, matching `encoding/json`.
 
-Methods such as `String`, `Error`, `MarshalJSON`, and `MarshalText` are not
-automatically called by the reflection walker. Unsupported values such as
+Methods such as `String`, `Error`, and `MarshalJSON` are not automatically
+called by the reflection walker. `MarshalText` is: an `encoding.TextMarshaler`
+is decided as a string, and its text is rendered only after an `omit`
+decision or a fully redacting rule (`FullRule`, `PasswordRule`, `TokenRule`)
+has had the chance to discard it, so such a decision never runs it. Unsupported values such as
 functions, channels, complex values, unsafe pointers, and arbitrary readers
 are fail-closed.
 

@@ -180,6 +180,12 @@ A zero `Decision` means "no opinion". `Decision{Omit: true}` removes an object
 or map member entirely; array elements keep their position and become `null`,
 so the shape of a list is never altered.
 
+Values are seen the way `encoding/json` would render them: a `time.Time`,
+`net.IP`, or any other `encoding.TextMarshaler` is masked as its text, and a
+`[]byte` as its base64 form. A `MarshalText` error or panic fails closed, and
+the method runs on a copy of the value, so it cannot change your data; a
+marshaler that holds pointers, maps, or locks is walked field by field instead.
+
 `NewKeyPolicy` rejects empty keys (including keys that are made of separator
 characters only), nil rules, and fold-equivalent keys bound to
 different rules, so an ambiguous configuration fails at construction instead of
