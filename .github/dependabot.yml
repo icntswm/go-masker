@@ -1,9 +1,10 @@
 version: 2
 
 updates:
-  # The Go module has no third-party dependencies, so only the workflow
-  # actions need watching. Pinned action majors go stale quietly: a runner
-  # deprecation is announced as a warning long before it becomes an error.
+  # The library has no third-party dependencies, so the workflow actions and
+  # the nested zerolog compatibility module are all that need watching.
+  # Pinned action majors go stale quietly: a runner deprecation is announced
+  # as a warning long before it becomes an error.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -12,3 +13,14 @@ updates:
       prefix: ci
     labels:
       - ci
+
+  # Tests zerologmask against the real zerolog. The nested module is outside
+  # the published library, which itself keeps no third-party dependency.
+  - package-ecosystem: gomod
+    directory: /internal/zerologcompat
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: deps
+    labels:
+      - dependencies

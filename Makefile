@@ -1,4 +1,4 @@
-.PHONY: fmt fmt-check vet lint vulncheck test race bench bench-matrix fuzz fuzz-core fuzz-http fuzz-json fuzz-string fuzz-policy fuzz-json-parity
+.PHONY: fmt fmt-check vet lint vulncheck test race compat bench bench-matrix fuzz fuzz-core fuzz-http fuzz-json fuzz-string fuzz-policy fuzz-json-parity
 
 fmt:
 	gofmt -w .
@@ -18,6 +18,11 @@ lint:
 # Reports standard-library advisories on code paths this module actually calls.
 vulncheck:
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+# Runs zerologmask against the real zerolog; the nested module keeps the
+# dependency out of the library.
+compat:
+	cd internal/zerologcompat && go test -race ./...
 
 test:
 	go test ./...

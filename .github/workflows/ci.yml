@@ -89,6 +89,24 @@ jobs:
       - name: govulncheck
         run: make vulncheck
 
+  zerolog-compat:
+    name: zerolog compatibility
+    runs-on: ubuntu-latest
+    # Every job carries a timeout: the default is six hours, which is a long
+    # time to pay for a hung test.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+          cache: true
+          # The nested compatibility module is the only place with a third-
+          # party dependency, so only its go.sum is cached here.
+          cache-dependency-path: internal/zerologcompat/go.sum
+      - name: zerologmask against the real zerolog
+        run: make compat
+
   masking-matrix:
     name: Masking matrix (Go ${{ matrix.go-version }})
     runs-on: ubuntu-latest

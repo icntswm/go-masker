@@ -18,7 +18,9 @@ The initial scope includes:
 - built-in struct tags;
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
-- logger adapters for `zerolog` and `zap` are out of scope for now.
+- JSON log lines through `zerologmask`, which wraps the output writer;
+- a `zap` adapter is out of scope for now; its JSON encoder works with
+  `zerologmask`.
 
 The security properties are more important than preserving the exact input
 shape or maximizing throughput:
@@ -92,8 +94,15 @@ go-masker/
 │   ├── doc.go
 │   ├── replace.go
 │   └── *_test.go
+├── zerologmask/
+│   ├── doc.go
+│   ├── writer.go
+│   └── *_test.go
 ├── testdata/
 │   └── security_decisions/
+├── internal/
+│   ├── outputdigest/
+│   └── zerologcompat/       # separate module
 ├── benchmark_matrix_test.go
 ├── benchmark_test.go
 ├── examples_test.go
@@ -115,7 +124,10 @@ traversal engine.
 
 The module has no third-party dependencies, so the repository contains no
 `go.sum`. Benchmarks live in the root package and add no dependency of their
-own.
+own. The one exception is `internal/zerologcompat`, a separate test-only module
+with its own `go.mod` and `go.sum` that checks `zerologmask` against the real
+zerolog; it is not part of the published module, so the library itself still
+has no third-party dependencies.
 
 ## 4. Core public API
 
@@ -781,7 +793,7 @@ The following items are outside the current scope:
 - JSON Lines support;
 - integer map keys;
 - optional code generation;
-- `zerolog` and `zap` adapters;
+- a native `zap` core;
 - CookieNamePolicy;
 - partial-result mode that returns a safe partial tree together with local
   errors;

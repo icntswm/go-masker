@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
+## [Unreleased]
+
+### Added
+
+- `zerologmask` package: `NewWriter(w, core)` masks JSON log lines from
+  zerolog (or any logger writing one JSON object per line) before they reach
+  w, and replaces a line it cannot parse with the redaction marker.
+
 ## [0.2.0] - 2026-09-29
 
 ### Added

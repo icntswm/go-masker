@@ -28,7 +28,8 @@ It provides one policy and rule model for:
 - JSON documents and readers;
 - struct tags;
 - HTTP headers and URLs through `httpmask`;
-- `log/slog` attributes through `slogmask`.
+- `log/slog` attributes through `slogmask`;
+- JSON log lines from zerolog through `zerologmask`.
 
 The core has no third-party runtime dependencies and does not depend on an HTTP
 framework or logging library.
@@ -69,6 +70,7 @@ Each of those claims is checked by the suite; see
 - [Struct tags](#struct-tags)
 - [HTTP headers and URLs](#http-headers-and-urls)
 - [log/slog](#logslog)
+- [zerolog](#zerolog)
 - [Errors and fail-closed behavior](#errors-and-fail-closed-behavior)
 - [Limits and security](#limits-and-security)
 - [How it is tested](#how-it-is-tested)
@@ -337,6 +339,26 @@ an `error` is masked as its text, and an `Omit` decision drops the attribute.
 The built-in time, level, message, and source attributes, and the message text
 itself, are not masked: pass secrets as attributes, never in the message.
 
+## zerolog
+
+The `zerologmask` adapter wraps the logger's writer, because zerolog serializes
+its fields as they are added and its hooks cannot change what is written:
+
+```go
+logger := zerolog.New(zerologmask.NewWriter(os.Stdout, m))
+logger.Info().Str("user", "alice").Str("password", "hunter2").Msg("login")
+// {"level":"info","message":"login","password":"[REDACTED]","user":"alice"}
+```
+
+Masking the output line covers every field, including those added through
+`Interface` or `RawJSON`, and any logger that writes one JSON object per line
+works the same way. For human-readable output put the masking writer in front
+of `zerolog.ConsoleWriter`, so the console formats an already masked line. A
+writer that routes by level, such as a `zerolog.MultiLevelWriter`, loses that
+routing when wrapped: wrap each destination instead. A line the masker cannot
+parse is replaced by `{"message":"[REDACTED]"}`, and the message text itself
+is not masked: keep secrets out of the message.
+
 ## Errors and fail-closed behavior
 
 Every public operation returns a safe fallback on an error; it never returns
@@ -381,7 +403,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 6,442 lines of tests against 4,595 lines
+listed rather than asserted. There are 6,752 lines of tests against 4,757 lines
 of shipped code.
 
 | Check | Evidence |
@@ -389,8 +411,8 @@ of shipped code.
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
 | Security goldens | 48 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
-| Examples | 28, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 84.9% core, 90.7% `httpmask`, 88.6% `slogmask` |
+| Examples | 29, executed and output-checked, so documentation cannot drift from behavior |
+| Coverage | 84.9% core, 90.7% `httpmask`, 88.6% `slogmask`, 94.6% `zerologmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 
