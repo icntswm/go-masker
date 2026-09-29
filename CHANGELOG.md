@@ -8,6 +8,8 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-30
+
 ### Added
 
 - Documents inside string values are masked: when the policy leaves a string
@@ -23,9 +25,7 @@ API may still change, and every such change is listed here.
   recognizable by shape: the credential after `Bearer` or `Basic`, PEM private
   key bodies, JWTs, provider tokens with a documented prefix and URL userinfo.
   Only the secret is replaced. The log message is searched too, in
-  `slogmask`, `zerologmask` and `zapmask`: `slogmask` now masks the message
-  as a string attribute named `msg` instead of passing it through, and with a
-  nil core it logs the marker in its place. `WithCardNumberDetection()` and
+  `slogmask`, `zerologmask` and `zapmask`. `WithCardNumberDetection()` and
   `WithAWSKeyIDDetection()` add opt-in detectors; `WithoutTextDetectors()`
   turns the detectors off and `WithoutValueInspection()` turns off both
   detectors and embedded documents.
@@ -39,6 +39,10 @@ API may still change, and every such change is listed here.
 
 ### Changed
 
+- `slogmask` masks the record message as a string attribute named `msg`
+  instead of passing it through, so the policy sees it at `$[msg]` and may
+  mask or omit it. With a nil core the message is replaced by the marker.
+  Time, level and source are still passed through.
 - `zerologmask` and `zapmask` share one line-masking engine; `zerologmask`
   keeps its API and serves zerolog and any other logger writing one JSON
   object per line.
@@ -63,6 +67,9 @@ API may still change, and every such change is listed here.
   failed on; two such failures at different paths are no longer merged.
 - `httpmask` documentation states that a query parameter is masked by its
   key's rule, which may keep part of the value.
+- `EmailRule` and `IDRule` no longer look up Unicode tables for every ASCII
+  character when checking for control characters; `EmailRule` is about four
+  times faster than in 0.4.0.
 
 ## [0.4.0] - 2026-09-29
 
@@ -291,6 +298,8 @@ First tagged release.
 - Settled the public module path `github.com/icntswm/go-masker` and added
   release, contribution and agent-facing documentation.
 
+[Unreleased]: https://github.com/icntswm/go-masker/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/icntswm/go-masker/releases/tag/v0.5.0
 [0.4.0]: https://github.com/icntswm/go-masker/releases/tag/v0.4.0
 [0.3.0]: https://github.com/icntswm/go-masker/releases/tag/v0.3.0
 [0.2.0]: https://github.com/icntswm/go-masker/releases/tag/v0.2.0

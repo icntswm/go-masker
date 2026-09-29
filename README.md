@@ -535,7 +535,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 9,220 lines of tests against 6,731 lines
+listed rather than asserted. There are 9,230 lines of tests against 6,763 lines
 of shipped code.
 
 | Check | Evidence |
@@ -545,7 +545,7 @@ of shipped code.
 | Fuzzing | 6 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs, text detectors |
 | Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` and `zapmask` against lines captured from the real zerolog and zap, so the module keeps no dependency |
 | Examples | 37, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 86.4% core, 88.5% `httpmask`, 91.7% `slogmask`, 96.3% for the text detectors, 90.8% for the line-masking engine behind `zerologmask` and `zapmask` |
+| Coverage | 86.5% core, 88.5% `httpmask`, 91.7% `slogmask`, 95.9% for the text detectors, 90.8% for the line-masking engine behind `zerologmask` and `zapmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 
@@ -569,7 +569,7 @@ The streaming JSON walker, bounded key cache, direct encoder, and per-masker
 reflection metadata cache are designed for predictable behavior on nested and
 wide payloads. On an M3 Pro, full redaction of a string costs 16 ns and
 allocates nothing, and a 10,000-record JSON document is masked at roughly
-130 MB/s. Throughput stays flat as documents grow wider or longer, which
+125 MB/s. Throughput stays flat as documents grow wider or longer, which
 matters more than the absolute numbers; the method and the full tables are in
 [PERFORMANCE.md](PERFORMANCE.md).
 
