@@ -49,6 +49,18 @@ func TestZerologMasksFields(t *testing.T) {
 	}
 }
 
+// TestReadmeZerologOutput pins the line shown in the README's zerolog
+// section, so the documented output cannot drift from the real logger.
+func TestReadmeZerologOutput(t *testing.T) {
+	var buffer bytes.Buffer
+	logger := newLogger(t, &buffer)
+	logger.Info().Str("user", "alice").Str("password", "hunter2").Msg("login")
+	want := `{"level":"info","message":"login","password":"[REDACTED]","user":"alice"}` + "\n"
+	if buffer.String() != want {
+		t.Fatalf("output = %q, want %q", buffer.String(), want)
+	}
+}
+
 func TestZerologMasksNestedAndRawValues(t *testing.T) {
 	var buffer bytes.Buffer
 	logger := newLogger(t, &buffer)

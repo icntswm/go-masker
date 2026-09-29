@@ -102,10 +102,14 @@ Import the core package as `masker`:
 import "github.com/icntswm/go-masker"
 ```
 
-The HTTP adapter is a separate package:
+The adapters are separate packages in the same module:
 
 ```go
-import "github.com/icntswm/go-masker/httpmask"
+import (
+	"github.com/icntswm/go-masker/httpmask"    // HTTP headers and URLs
+	"github.com/icntswm/go-masker/slogmask"    // log/slog attributes
+	"github.com/icntswm/go-masker/zerologmask" // zerolog and other JSON-line loggers
+)
 ```
 
 ## Quick start
@@ -480,7 +484,7 @@ the archive instead.
 - [RELEASING.md](RELEASING.md) — tagging, the module proxy, and retractions.
 
 The package godoc contains runnable examples for construction, JSON,
-reflection, custom rules, struct tags, and HTTP adapters.
+reflection, custom rules, struct tags, and the HTTP and logger adapters.
 
 ## Compatibility and stability
 

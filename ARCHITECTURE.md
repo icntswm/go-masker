@@ -715,7 +715,8 @@ outputs but cannot make arbitrary user state safe.
 - URL path and fragment defaults;
 - Cookie full-redaction behavior;
 - memory retention of source strings;
-- the inability to prove arbitrary custom Rule semantic safety.
+- the inability to prove arbitrary custom Rule semantic safety;
+- free text in log messages, which the logger adapters do not mask.
 
 ## 13. Testing and benchmarking
 
@@ -838,6 +839,9 @@ fall back to the original value when masking returns an error.
   around the digits, use full redaction; ordinary phone/card separators are
   retained only when there are more than four digits.
 - Reflection inputs with invalid UTF-8 fail closed with `ErrInvalidUTF8`.
+- `zerologmask` masks whole lines only: a record split across two `Write`
+  calls is replaced by the fallback line, and wrapping a level-routing
+  destination such as zerolog's `MultiLevelWriter` loses its routing.
 - A single JSON object with very many members uses a full-key hash for duplicate
   lookup and `slices.SortFunc`; the per-document key cache is bounded and each
   hash chain is capped, so object width does not create an unbounded quadratic

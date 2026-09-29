@@ -66,6 +66,14 @@ values and field metadata remain reachable for that `Masker`'s lifetime. Code
 that constructs long-lived maskers for attacker-controlled streams of dynamic
 struct types should account for this retention risk.
 
+The logger adapters mask structured fields, not free text. `slogmask` leaves
+the message and built-in attributes as they are, and `zerologmask` masks each
+JSON line by key, so a secret interpolated into the message text is logged.
+`zerologmask` sees only the serialized output: a line it cannot parse, or a
+record split across two writes, is replaced by the redaction marker rather
+than passed through, and a level-routing destination loses its routing when
+wrapped.
+
 URLs preserve paths by default for compatibility. Userinfo is always redacted,
 and so is the fragment unless the caller asks the HTTP adapter to keep it.
 Cookies and Set-Cookie headers are fully redacted in the MVP.
