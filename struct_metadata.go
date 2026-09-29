@@ -69,6 +69,9 @@ func buildStructMetadata(typ reflect.Type, tagName string, tagRules map[string]R
 	for _, candidate := range candidates {
 		name, omitted := jsonFieldName(candidate.field)
 		maskTag := structMaskTag(candidate.field, tagName)
+		if maskTag == "" && ambiguousJSONName(candidate.field) {
+			maskTag = ambiguousJSONTag
+		}
 		fieldMetadata := structFieldMetadata{
 			index:    append([]int(nil), candidate.index...),
 			jsonName: name,

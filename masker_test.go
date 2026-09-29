@@ -639,27 +639,32 @@ func TestUntypedNilIsDecidedByThePolicy(t *testing.T) {
 	}
 }
 
-func TestInvalidJSONTagNameFallsBackToFieldName(t *testing.T) {
+// TestInvalidJSONTagNameFailsClosed covers tag names encoding/json rejects:
+// Go 1.26 writes such a field as its Go name and Go 1.27 as the name cut at
+// the backslash or quote, so the walker cannot know the key and redacts it.
+func TestInvalidJSONTagNameFailsClosed(t *testing.T) {
 	type payload struct {
 		Password string `json:"safe\\name"` //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
-		Token    string `json:"quo\"te"`    //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
 		Plain    string `json:"a-b.c"`
 	}
-	value := payload{Password: "dummy-password", Token: "dummy-token", Plain: "kept"}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
+	type quoted struct {
+		Token string `json:"quo\"te"` //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
 	}
-	if string(encoded) != `{"Password":"dummy-password","Token":"dummy-token","a-b.c":"kept"}` {
-		t.Fatalf("encoding/json changed its tag rules: %s", encoded)
+	type omitted struct {
+		Secret string `json:"x\\y" mask:"omit"` //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
+		Plain  string `json:"a-b.c"`
 	}
-	result, err := newTestMasker(t).MaskAny(value)
-	if err != nil {
-		t.Fatal(err)
+	masker := newTestMasker(t)
+	for _, value := range []any{payload{Password: "dummy-password", Plain: "kept"}, quoted{Token: "dummy-token"}} {
+		result, err := masker.MaskAny(value)
+		if result != DefaultRedactionMarker || !errors.Is(err, ErrInvalidConfig) {
+			t.Fatalf("MaskAny(%#v) = %#v, %v; want the marker and ErrInvalidConfig", value, result, err)
+		}
 	}
-	want := map[string]any{"Password": DefaultRedactionMarker, "Token": DefaultRedactionMarker, "a-b.c": "kept"}
-	if !reflect.DeepEqual(result, want) {
-		t.Fatalf("got %#v, want %#v", result, want)
+	// A mask tag decides the field without its name, so the tag still applies.
+	result, err := masker.MaskAny(omitted{Secret: "dummy-secret", Plain: "kept"})
+	if err != nil || !reflect.DeepEqual(result, map[string]any{"a-b.c": "kept"}) {
+		t.Fatalf("got %#v, %v", result, err)
 	}
 }
 

@@ -173,7 +173,10 @@ The normalized result contract is:
 
 - maps become newly allocated `map[string]any` values;
 - slices and arrays become newly allocated `[]any` values;
-- structs are represented by maps using their visible field names;
+- structs are represented by maps using their visible field names; a field
+  whose JSON tag name `encoding/json` rejects is written under a different key
+  by Go 1.26 and by Go 1.27, so it fails closed with `CodeInvalidConfig` unless
+  a mask tag decides it;
 - pointers and interfaces are unwrapped;
 - an `encoding.TextMarshaler` becomes its text and a non-nil `[]byte` its
   standard base64 form, as `encoding/json` renders them; a byte slice whose

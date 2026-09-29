@@ -1101,10 +1101,30 @@ func jsonFieldTagged(field reflect.StructField) bool {
 	return validJSONTagName(name) && tag != "-"
 }
 
-// validJSONTagName reports a tag name encoding/json accepts. It ignores any
-// other name and uses the Go field name, so the walker must too: otherwise a
-// tag such as `json:"safe\\name"` on a Password field would hide the key the
-// policy matches while encoding/json still writes Password.
+// validJSONTagName reports a tag name encoding/json accepts in every Go
+// release. Up to Go 1.26 encoding/json ignores any other name and writes the Go
+// field name, which the walker uses too; see ambiguousJSONName for why such a
+// field is still never decided by that name.
+// ambiguousJSONTag is the mask tag given to a field whose JSON name depends on
+// the Go release. No tag rule can have this name, because tag rule names
+// cannot contain a space, so the field fails closed as an unknown tag.
+const ambiguousJSONTag = " ambiguous json name"
+
+// ambiguousJSONName reports a field whose json tag names it with a name that
+// validJSONTagName rejects. Go 1.26 and earlier write such a field under its Go
+// name, while Go 1.27, whose encoding/json is built on json v2, cuts the name
+// at the first backslash or quote and accepts any other character, so no one
+// key is the one encoding/json writes. Deciding the policy by either name
+// could hide the key it matches, so the field is redacted instead.
+func ambiguousJSONName(field reflect.StructField) bool {
+	tag, ok := field.Tag.Lookup("json")
+	if !ok || tag == "-" {
+		return false
+	}
+	name, _, _ := strings.Cut(tag, ",")
+	return name != "" && !validJSONTagName(name)
+}
+
 func validJSONTagName(name string) bool {
 	if name == "" {
 		return false

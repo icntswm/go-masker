@@ -44,10 +44,12 @@ API may still change, and every such change is listed here.
 - A manual run of the provenance workflow must be started from the tag it
   names and fails otherwise, instead of archiving the branch it was started
   from and attesting that branch.
-- Reflection traversal ignores a JSON tag name that `encoding/json` rejects,
-  such as one with a backslash or a quote, and uses the Go field name as
-  `encoding/json` does. Before, a `Password` field whose tag name held a
-  backslash was matched under that name and logged unmasked.
+- A struct field whose JSON tag name `encoding/json` rejects, such as one with
+  a backslash or a quote, fails closed with `ErrInvalidConfig` unless a mask
+  tag decides it. Go 1.26 writes such a field under its Go name and Go 1.27
+  under the name cut at the backslash or quote, so no single key is right.
+  Before, a `Password` field whose tag name held a backslash was matched under
+  that name and logged unmasked.
 - `MaskField` and `MaskValue` decide an untyped nil through the policy instead
   of failing with `ErrPanic`; `slog.Any("k", nil)` logs `null`.
 - The `Policy` documentation states that a policy must be deterministic.
