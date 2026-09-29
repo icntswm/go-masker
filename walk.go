@@ -229,10 +229,15 @@ func textualValue(value reflect.Value) bool {
 // a copy that shares no memory with the input. Any other marshaler is walked
 // like an ordinary value, so user code never sees the input's storage.
 func implementsTextMarshaler(value reflect.Value) bool {
+	typ := value.Type()
+	if typ.NumMethod() == 0 && !value.CanAddr() {
+		// No exported methods at all, as for a plain string or number: the
+		// cheapest check on the scalar hot path.
+		return false
+	}
 	if !value.CanInterface() {
 		return false
 	}
-	typ := value.Type()
 	implements := typ.Implements(textMarshalerType) ||
 		value.CanAddr() && reflect.PointerTo(typ).Implements(textMarshalerType)
 	return implements && isolatableTextType(typ)

@@ -131,25 +131,9 @@ func stripKeySeparators(key string) string {
 	return string(stripped)
 }
 
-// asciiKeyBufferSize bounds the stack buffer Decide normalizes ASCII keys
+// asciiKeyBufferSize bounds the stack buffer decideASCII normalizes keys
 // into; longer keys take the allocating path.
 const asciiKeyBufferSize = 64
-
-// appendNormalizedASCIIKey lowercases an ASCII key and drops its separators
-// in one pass, producing the same form as ToLower(stripKeySeparators(key)).
-func appendNormalizedASCIIKey(dst []byte, key string) []byte {
-	for index := range len(key) {
-		char := key[index]
-		switch {
-		case char == '_' || char == '-' || char == '.':
-		case 'A' <= char && char <= 'Z':
-			dst = append(dst, char+('a'-'A'))
-		default:
-			dst = append(dst, char)
-		}
-	}
-	return dst
-}
 
 // NewKeyPolicy validates and compiles key bindings. Keys compare equal when
 // they differ only by Unicode case or by the separator characters "_", "-",
@@ -208,26 +192,19 @@ func (p *KeyPolicy) Decide(field Field) (Decision, error) {
 	if p == nil {
 		return Decision{}, fmt.Errorf("%w: nil key policy", errorSentinels[CodePolicyFailure])
 	}
-	if p.asciiOnly && isASCII(field.Key) && len(field.Key) <= asciiKeyBufferSize {
-		var buffer [asciiKeyBufferSize]byte
-		// The string conversion in a map index does not allocate.
-		entries := p.entries[string(appendNormalizedASCIIKey(buffer[:0], field.Key))]
-		if len(entries) == 0 {
-			return Decision{}, nil
+	if field.Key == "" {
+		return Decision{}, nil
+	}
+	if p.asciiOnly {
+		if decision, ok := p.decideASCII(field.Key); ok {
+			return decision, nil
 		}
-		return Decision{Rule: entries[0].rule}, nil
 	}
 	stripped := stripKeySeparators(field.Key)
 	if stripped == "" {
 		return Decision{}, nil
 	}
 	entries := p.entries[strings.ToLower(stripped)]
-	if p.asciiOnly && isASCII(field.Key) {
-		if len(entries) == 0 {
-			return Decision{}, nil
-		}
-		return Decision{Rule: entries[0].rule}, nil
-	}
 	for _, entry := range entries {
 		if strings.EqualFold(entry.key, stripped) {
 			return Decision{Rule: entry.rule}, nil
@@ -241,6 +218,42 @@ func (p *KeyPolicy) Decide(field Field) (Decision, error) {
 		}
 	}
 	return Decision{}, nil
+}
+
+// decideASCII looks an ASCII key up in the lowercase buckets, which hold only
+// ASCII keys when asciiOnly is set, so the first entry is the match. A short
+// key is checked, lowercased, and stripped of separators in one pass into a
+// stack buffer. It reports false for a non-ASCII key.
+func (p *KeyPolicy) decideASCII(key string) (Decision, bool) {
+	var entries []keyEntry
+	if len(key) <= asciiKeyBufferSize {
+		var buffer [asciiKeyBufferSize]byte
+		size := 0
+		for index := range len(key) {
+			char := key[index]
+			switch {
+			case char >= utf8.RuneSelf:
+				return Decision{}, false
+			case char == '_' || char == '-' || char == '.':
+				continue
+			case 'A' <= char && char <= 'Z':
+				char += 'a' - 'A'
+			}
+			buffer[size] = char
+			size++
+		}
+		// The string conversion in a map index does not allocate.
+		entries = p.entries[string(buffer[:size])]
+	} else {
+		if !isASCII(key) {
+			return Decision{}, false
+		}
+		entries = p.entries[strings.ToLower(stripKeySeparators(key))]
+	}
+	if len(entries) == 0 {
+		return Decision{}, true
+	}
+	return Decision{Rule: entries[0].rule}, true
 }
 
 var defaultBindings = []Binding{

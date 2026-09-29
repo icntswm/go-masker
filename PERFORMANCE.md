@@ -26,17 +26,17 @@ for capacity planning.
 | `MaskString`, full redaction | 15.8 | 0 | 0 |
 | `MaskString`, email rule | 94.2 | 16 | 1 |
 | `MaskString`, formatted card | 128.3 | 24 | 1 |
-| `KeyPolicy`, key matches | 39.1 | 24 | 1 |
-| `KeyPolicy`, key does not match | 60.6 | 24 | 1 |
-| `KeyPolicy`, empty key | 27.5 | 24 | 1 |
-| `MaskValue`, scalar, rule applied | 100.8 | 32 | 2 |
-| `MaskValue`, scalar, no rule | 99.0 | 40 | 2 |
-| `MaskAny`, scalar | 70.7 | 16 | 1 |
+| `KeyPolicy`, key matches | 33.4 | 24 | 1 |
+| `KeyPolicy`, key does not match | 42.9 | 24 | 1 |
+| `KeyPolicy`, empty key | 19.3 | 24 | 1 |
+| `MaskValue`, scalar, rule applied | 104.5 | 32 | 2 |
+| `MaskValue`, scalar, no rule | 98.1 | 40 | 2 |
+| `MaskAny`, scalar | 56.2 | 16 | 1 |
 | `MaskAny`, flat struct | 269.4 | 432 | 7 |
 | `MaskAny`, wide struct | 1,026 | 1,736 | 20 |
-| `MaskAny`, nested/tagged struct | 1,575 | 1,800 | 23 |
+| `MaskAny`, nested/tagged struct | 1,492 | 1,800 | 23 |
 | `MaskAny`, nested map | 239,970 | 161,262 | 4,120 |
-| `httpmask.Headers`, mixed set | 1,366 | 928 | 34 |
+| `httpmask.Headers`, mixed set | 1,344 | 928 | 34 |
 | `httpmask.URL`, query | 1,383 | 840 | 24 |
 
 Flat and wide structs use the specialized scalar-struct path with compiled
