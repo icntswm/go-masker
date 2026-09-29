@@ -30,3 +30,6 @@ updates:
       prefix: deps
     labels:
       - dependencies
+
+  # zapmask is left out on purpose: its require lines are the minimum versions
+  # it supports, and a bump would force every user of the module up with it.

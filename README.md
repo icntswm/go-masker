@@ -29,7 +29,8 @@ It provides one policy and rule model for:
 - struct tags;
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
-- JSON log lines from zerolog through `zerologmask`.
+- JSON log lines from zerolog through `zerologmask`;
+- zap fields through the `zapmask` module.
 
 The core has no third-party runtime dependencies and does not depend on an HTTP
 framework or logging library.
@@ -71,6 +72,7 @@ Each of those claims is checked by the suite; see
 - [HTTP headers and URLs](#http-headers-and-urls)
 - [log/slog](#logslog)
 - [zerolog](#zerolog)
+- [zap](#zap)
 - [Errors and fail-closed behavior](#errors-and-fail-closed-behavior)
 - [Limits and security](#limits-and-security)
 - [How it is tested](#how-it-is-tested)
@@ -110,6 +112,13 @@ import (
 	"github.com/icntswm/go-masker/slogmask"    // log/slog attributes
 	"github.com/icntswm/go-masker/zerologmask" // zerolog and other JSON-line loggers
 )
+```
+
+The zap adapter is a separate module, so the library itself keeps no
+third-party dependency:
+
+```text
+go get github.com/icntswm/go-masker/zapmask
 ```
 
 ## Quick start
@@ -377,7 +386,29 @@ masked line. A writer that routes or filters by level, such as a
 wrapped and receives every level: wrap each destination instead. zerolog built
 with the `binary_log` tag writes CBOR, not JSON, and every line is replaced. A line the masker cannot parse is replaced by
 `{"message":"[REDACTED]"}`, and the message text itself is not masked: keep
-secrets out of the message.
+secrets out of the message. For zap, prefer `zapmask`: it masks fields before
+they are encoded and keeps their order.
+
+## zap
+
+The `zapmask` module wraps the logger's core, so fields are masked before any
+encoder sees them:
+
+```go
+logger, err := zap.NewProduction(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+	return zapmask.NewCore(c, m)
+}))
+logger.Info("login", zap.String("user", "alice"), zap.String("password", "hunter2"))
+// {"level":"info",...,"msg":"login","user":"alice","password":"[REDACTED]"}
+```
+
+Fields added through `With` and fields at the call site are masked the same way,
+for every encoder. The policy sees `zap.Namespace` keys in the path, such as
+`$[req][token]`, and decides each namespace as an object first, so fields
+written into a `credentials` namespace are masked. Sampling, level filtering
+and `zapcore.Tee` branches keep working, because the inner core still decides
+what is written. The message is not masked, and an error field is logged as its
+masked text without zap's `errorVerbose` detail.
 
 ## Errors and fail-closed behavior
 
@@ -431,9 +462,9 @@ of shipped code.
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
 | Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
-| Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` against the real zerolog in a separate test-only module, so the library keeps no dependency |
-| Examples | 29, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 84.9% core, 90.7% `httpmask`, 88.6% `slogmask`, 94.9% `zerologmask` |
+| Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` against the real zerolog in a separate test-only module, so the library keeps no dependency; `zapmask` against the real zap in its own module |
+| Examples | 30, executed and output-checked, so documentation cannot drift from behavior |
+| Coverage | 84.9% core, 90.7% `httpmask`, 88.6% `slogmask`, 94.9% `zerologmask`, 72.6% `zapmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 

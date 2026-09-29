@@ -8,6 +8,14 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+### Added
+
+- `zapmask` module (`github.com/icntswm/go-masker/zapmask`, versioned
+  separately): `NewCore(inner, core)` wraps a zap core and masks context and
+  call-site fields before any encoder sees them. A `zap.Namespace` is decided
+  by the policy as an object, like a group in `slogmask`, and sampling and
+  `Tee` levels of the inner core keep working.
+
 ### Changed
 
 - Reflection traversal decodes a `json.RawMessage` and masks it by its keys

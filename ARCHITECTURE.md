@@ -19,8 +19,8 @@ The initial scope includes:
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
 - JSON log lines through `zerologmask`, which wraps the output writer;
-- a `zap` adapter is out of scope for now; its JSON encoder works with
-  `zerologmask`.
+- zap fields through `zapmask`, a separate module that wraps a
+  `zapcore.Core`.
 
 The security properties are more important than preserving the exact input
 shape or maximizing throughput:
@@ -98,6 +98,10 @@ go-masker/
 │   ├── doc.go
 │   ├── writer.go
 │   └── *_test.go
+├── zapmask/                 # separate module
+│   ├── doc.go
+│   ├── core.go
+│   └── *_test.go
 ├── testdata/
 │   └── security_decisions/
 ├── internal/
@@ -128,6 +132,15 @@ own. The one exception is `internal/zerologcompat`, a separate test-only module
 with its own `go.mod` and `go.sum` that checks `zerologmask` against the real
 zerolog; it is not part of the published module, so the library itself still
 has no third-party dependencies.
+
+`zapmask` must import zap, so it is a separate published module with its own
+`go.mod` and `go.sum`, versioned by `zapmask/vX.Y.Z` tags. Its require lines
+are the minimum versions it supports. It masks fields, not encoded output:
+`Check` adds the wrapper itself, and `Write` masks the fields and writes them
+through the inner core's own `Check`, so sampling and the levels of each `Tee`
+branch keep deciding what is written. A `zap.Namespace` is decided as an
+object before the fields written into it, as `slogmask` does for groups. The
+entry (message, logger name, caller, stack) is not masked.
 
 ## 4. Core public API
 
@@ -829,7 +842,6 @@ The following items are outside the current scope:
   splits lines);
 - integer map keys;
 - optional code generation;
-- a native `zap` core;
 - CookieNamePolicy;
 - partial-result mode that returns a safe partial tree together with local
   errors;

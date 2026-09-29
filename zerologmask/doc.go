@@ -6,7 +6,8 @@
 // the destination and masks every JSON line through a core masker before it
 // is passed on. The package does not import zerolog, and any logger that
 // writes one JSON object per line works, including log/slog's JSONHandler and
-// zap's JSON encoder.
+// zap's JSON encoder; for zap, the zapmask module masks fields before they are
+// encoded and is preferred.
 //
 // Use it as the logger's writer:
 //

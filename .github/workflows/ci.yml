@@ -72,6 +72,11 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.11.4
+      - name: Lint zapmask
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: v2.11.4
+          working-directory: zapmask
 
   vulncheck:
     name: Vulnerability scan
@@ -106,6 +111,26 @@ jobs:
           cache-dependency-path: internal/zerologcompat/go.sum
       - name: zerologmask against the real zerolog
         run: make compat
+
+  zapmask:
+    name: zapmask (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.23.x', '1.24.x', '1.25.x', '1.26.x', '1.27.x', 'stable']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+          # zapmask is a separate module with its own go.sum; the library
+          # itself keeps no third-party dependency.
+          cache-dependency-path: zapmask/go.sum
+      - name: Vet, format and race tests
+        run: make zapmask
 
   masking-matrix:
     name: Masking matrix (Go ${{ matrix.go-version }})
