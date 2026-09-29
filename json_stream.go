@@ -12,6 +12,8 @@ import (
 type streamJSONWalker struct {
 	masker          *Masker
 	nodes           int
+	rootPath        string
+	changes         int
 	errs            []*MaskError
 	stop            bool
 	path            []streamJSONPathPart
@@ -170,8 +172,25 @@ func (w *streamJSONWalker) appendValue(data []byte, start int, field Field, dept
 
 	switch kind {
 	case KindString:
+		token := data[start:scalarEnd]
+		if w.masker.cfg.embedded && embeddedCandidateToken(token) {
+			decoded, ok := streamJSONStringText(token)
+			if !ok {
+				return start, false, false
+			}
+			located := field
+			if located.Path == "" {
+				located.Path = w.currentPath()
+			}
+			state := inspectState{nodes: &w.nodes, errs: &w.errs, stop: &w.stop}
+			if masked, changed := w.masker.inspectString(decoded, located, depth, state); changed {
+				*out = appendJSONString(*out, masked)
+				w.changes++
+				return scalarEnd, true, false
+			}
+		}
 		var ok bool
-		*out, ok = appendStreamJSONString(*out, data[start:scalarEnd])
+		*out, ok = appendStreamJSONString(*out, token)
 		if !ok {
 			return start, false, false
 		}
@@ -210,6 +229,7 @@ func (w *streamJSONWalker) decide(field Field, data []byte, start, scalarEnd int
 		return true, 0, false
 	}
 	if decision.Omit {
+		w.changes++
 		return true, 0, true
 	}
 	if isNilRule(decision.Rule) {
@@ -242,9 +262,11 @@ func (w *streamJSONWalker) decide(field Field, data []byte, start, scalarEnd int
 			field.Path = w.currentPath()
 		}
 		addUniqueRuleError(&w.errs, code, field, decision.Rule)
+		w.changes++
 		*out = appendJSONString(*out, w.masker.cfg.marker)
 		return true, 0, false
 	}
+	w.changes++
 	*out = appendJSONString(*out, result)
 	return true, 0, false
 }
@@ -766,6 +788,7 @@ func validSkippedPrimitive(token []byte) bool {
 }
 
 func (w *streamJSONWalker) fail(code ErrorCode, field Field, depth int) {
+	w.changes++
 	if field.Path == "" {
 		field.Path = w.currentPath()
 	}
@@ -893,7 +916,10 @@ func sortStreamMembers(members []streamJSONMember) {
 }
 
 func (w *streamJSONWalker) currentPath() string {
-	path := "$"
+	path := w.rootPath
+	if path == "" {
+		path = "$"
+	}
 	for _, part := range w.path {
 		if part.isIndex {
 			path = pathForIndex(path, part.index)

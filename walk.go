@@ -99,6 +99,19 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		return omittedResult, true, nil
 	}
 	if isNilRule(decision.Rule) {
+		if s, ok := embeddedScalar(reflected, m.cfg.embedded); ok {
+			nodes := 1
+			var errs []*MaskError
+			var stop bool
+			state := inspectState{nodes: &nodes, errs: &errs, stop: &stop}
+			masked, changed := m.inspectString(s, field, 0, state)
+			if changed {
+				if len(errs) > 0 {
+					return m.cfg.marker, true, aggregateErrors(errs)
+				}
+				return masked, true, nil
+			}
+		}
 		return safeScalar(reflected, m.cfg.preserveSafe, m.cfg.marker), true, nil
 	}
 
@@ -214,14 +227,26 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		if !ok {
 			return w.masker.cfg.marker
 		}
+		if w.masker.cfg.embedded && embeddedCandidate(text) {
+			if masked, changed := w.inspect(text, field, depth); changed {
+				return masked
+			}
+		}
 		return w.safeScalar(reflect.ValueOf(text))
 	}
 
 	var result any
 	switch value.Kind() {
+	case reflect.String:
+		result = w.safeScalar(value)
+		if s, ok := embeddedScalar(value, w.masker.cfg.embedded); ok {
+			if masked, changed := w.inspect(s, field, depth); changed {
+				result = masked
+			}
+		}
 	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64, reflect.String:
+		reflect.Float32, reflect.Float64:
 		result = w.safeScalar(value)
 	case reflect.Map:
 		result = w.mapValue(value, field, depth)
@@ -663,6 +688,11 @@ func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, met
 			result = decisionResult
 		} else {
 			result = w.safeScalar(value)
+			if s, ok := embeddedScalar(value, w.masker.cfg.embedded); ok {
+				if masked, changed := w.inspect(s, field, depth); changed {
+					result = masked
+				}
+			}
 		}
 	}
 	return result
@@ -710,6 +740,14 @@ func (w *walker) resultCapacity(length int) int {
 
 func (w *walker) safeScalar(value reflect.Value) any {
 	return safeScalar(value, w.masker.cfg.preserveSafe, w.masker.cfg.marker)
+}
+
+// inspect masks a document carried in a string value, joining the walker's
+// node and error budget. The field is located first: a candidate pays for the
+// path, a plain string never reaches here.
+func (w *walker) inspect(s string, field Field, depth int) (string, bool) {
+	state := inspectState{nodes: &w.nodes, errs: &w.errs, stop: &w.stop}
+	return w.masker.inspectString(s, w.locate(field), depth, state)
 }
 
 func safeScalar(value reflect.Value, preserveSafe bool, marker string) any {

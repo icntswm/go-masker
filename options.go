@@ -12,6 +12,7 @@ type config struct {
 	maxNodes      int
 	maxInputBytes int64
 	preserveSafe  bool
+	embedded      bool
 	structTag     string
 	tagRules      map[string]Rule
 	needPaths     bool
@@ -25,6 +26,18 @@ func defaultConfig() config {
 		maxInputBytes: 8 << 20,
 		structTag:     DefaultStructTag,
 		tagRules:      builtinTagRules(),
+		embedded:      true,
+	}
+}
+
+// WithoutEmbeddedDocuments stops masking URLs, JSON documents and forms carried
+// inside string values. By default a string whose field the policy leaves alone
+// is masked as the document it holds, so a body or a callback URL logged as a
+// string does not leak the secrets inside it.
+func WithoutEmbeddedDocuments() Option {
+	return func(cfg *config) error {
+		cfg.embedded = false
+		return nil
 	}
 }
 
