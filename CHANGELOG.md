@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-29
 
 ### Added
 
@@ -160,5 +160,6 @@ First tagged release.
 - Settled the public module path `github.com/icntswm/go-masker` and added
   release, contribution and agent-facing documentation.
 
+[0.2.0]: https://github.com/icntswm/go-masker/releases/tag/v0.2.0
 [0.1.1]: https://github.com/icntswm/go-masker/releases/tag/v0.1.1
 [0.1.0]: https://github.com/icntswm/go-masker/releases/tag/v0.1.0
