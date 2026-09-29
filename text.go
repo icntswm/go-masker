@@ -32,6 +32,11 @@ func (m *Masker) inspectText(s string, field Field, depth int, state inspectStat
 		value := s[pair.ValueStart:pair.ValueEnd]
 		member := Field{Key: key, Path: pathFor(field.Path, key), Source: SourceText, Kind: KindString}
 		masked, decided, keep := m.decideMember(member, value, depth, state)
+		if *state.stop {
+			// The whole operation becomes the marker; the remaining pairs
+			// would only be decided and discarded.
+			return m.cfg.marker, true
+		}
 		if !decided {
 			continue
 		}

@@ -855,7 +855,12 @@ func addFieldError(errs *[]*MaskError, code ErrorCode, field Field, depth int) {
 }
 
 func addPriorityFieldError(errs *[]*MaskError, code ErrorCode, field Field, depth int) {
-	err := newFieldError(code, field, depth)
+	addPriorityMaskError(errs, newFieldError(code, field, depth))
+}
+
+// addPriorityMaskError records err even when the list is full, replacing its
+// last entry, so a limit failure is never dropped.
+func addPriorityMaskError(errs *[]*MaskError, err *MaskError) {
 	if len(*errs) < maxMaskErrorsPerOperation {
 		addMaskError(errs, err)
 		return

@@ -101,8 +101,10 @@ func sameBytes[T ~string | ~[]byte](s T, at, from, n int) bool {
 	return true
 }
 
-// matchJWT finds a JSON Web Token: two base64url segments that both decode
-// to a JSON object, hence "eyJ", and a signature that may be empty.
+// matchJWT finds a JSON Web Token: two base64url segments that both begin
+// with "eyJ", the encoding of `{"` that starts a JSON object, and a signature
+// that may be empty. The segments are not decoded, so an identifier shaped
+// like a token is masked as one.
 func matchJWT[T ~string | ~[]byte](s T, index int) (Span, bool) {
 	if !boundedBefore(s, index, isJWTChar) || !hasPrefixAt(s, index, "eyJ") {
 		return Span{}, false
@@ -286,7 +288,7 @@ func matchPair[T ~string | ~[]byte](s T, index int, run *valueRun) (Pair, bool) 
 	var keyEnd, after int
 	if quote := s[index]; quote == '"' || quote == '\'' {
 		keyStart = index + 1
-		if keyStart >= len(s) || !isLetter(s[keyStart]) {
+		if keyStart >= len(s) || !isKeyStart(s[keyStart]) {
 			return Pair{}, false
 		}
 		keyEnd = keyRunEnd(s, keyStart)
@@ -295,13 +297,13 @@ func matchPair[T ~string | ~[]byte](s T, index int, run *valueRun) (Pair, bool) 
 		}
 		after = keyEnd + 1
 	} else {
-		if !isLetter(s[index]) || index > 0 && (isKeyChar(s[index-1]) || s[index-1] == '/') {
+		if !isKeyStart(s[index]) || index > 0 && (isKeyChar(s[index-1]) || s[index-1] == '/') {
 			return Pair{}, false
 		}
 		keyEnd = keyRunEnd(s, keyStart)
 		after = keyEnd
 	}
-	if keyEnd-keyStart > maxKeyLen {
+	if keyEnd-keyStart > maxKeyLen || !hasLetter(s, keyStart, keyEnd) {
 		return Pair{}, false
 	}
 	after = skipBlanks(s, after)
@@ -318,7 +320,12 @@ func matchPair[T ~string | ~[]byte](s T, index int, run *valueRun) (Pair, bool) 
 	if quote := s[valueStart]; quote == '"' || quote == '\'' {
 		valueStart++
 		valueEnd := valueStart
-		for valueEnd < len(s) && s[valueEnd] != '\n' && (s[valueEnd] != quote || s[valueEnd-1] == '\\') {
+		for valueEnd < len(s) && s[valueEnd] != '\n' && s[valueEnd] != quote {
+			// A backslash escapes the byte after it, so "\\" before the
+			// quote is an escaped backslash and the quote still closes.
+			if s[valueEnd] == '\\' && valueEnd+1 < len(s) && s[valueEnd+1] != '\n' {
+				valueEnd++
+			}
 			valueEnd++
 		}
 		if valueEnd == valueStart {
@@ -361,6 +368,22 @@ func keyRunEnd[T ~string | ~[]byte](s T, index int) int {
 }
 
 const maxKeyLen = 64
+
+// isKeyStart accepts the first byte of a key. Policies ignore '_', '-' and
+// '.' when they match keys, so "_token" and the flag "--password" are keys
+// like "token" and "password"; a key still needs a letter somewhere.
+func isKeyStart(char byte) bool {
+	return isLetter(char) || char == '_' || char == '-' || char == '.'
+}
+
+func hasLetter[T ~string | ~[]byte](s T, start, end int) bool {
+	for index := start; index < end; index++ {
+		if isLetter(s[index]) {
+			return true
+		}
+	}
+	return false
+}
 
 func skipBlanks[T ~string | ~[]byte](s T, index int) int {
 	for index < len(s) && (s[index] == ' ' || s[index] == '\t') {

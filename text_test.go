@@ -2,6 +2,7 @@ package masker
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,21 @@ var textCases = []struct {
 		name:  "quoted pair",
 		value: `retry with password: "dummy value" later`,
 		want:  `retry with password: "[REDACTED]" later`,
+	},
+	{
+		name:  "escaped backslash before the closing quote",
+		value: `password="C:\\", status=ok`,
+		want:  `password="[REDACTED]", status=ok`,
+	},
+	{
+		name:  "key with a leading underscore",
+		value: "login _token=dummy-secret",
+		want:  "login _token=[REDACTED]",
+	},
+	{
+		name:  "command-line flag",
+		value: "run --password=dummy-pass",
+		want:  "run --password=[REDACTED]",
 	},
 	{
 		name:  "bearer",
@@ -230,5 +246,15 @@ func TestTextPolicyFailureIsMarked(t *testing.T) {
 	}
 	if result != "retry user=[REDACTED]" && result != "[REDACTED]" {
 		t.Fatalf("the failed pair must not leak, got %q", result)
+	}
+}
+
+// TestTextNodeLimitStops checks that a text past the node limit becomes the
+// marker, reporting the limit, however many pairs remain after it.
+func TestTextNodeLimitStops(t *testing.T) {
+	m := newTestMasker(t, WithMaxNodes(2))
+	result, err := m.MaskValue("message", strings.Repeat("a=b ", 10_000))
+	if result != "[REDACTED]" || !errors.Is(err, ErrNodeLimit) {
+		t.Fatalf("got %.40q, %v", result, err)
 	}
 }

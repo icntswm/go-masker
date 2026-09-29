@@ -140,7 +140,10 @@ func WithMaxNodes(nodes int) Option {
 	}
 }
 
-// WithMaxInputBytes limits input accepted by MaskJSON and MaskJSONReader.
+// WithMaxInputBytes limits input accepted by MaskJSON and MaskJSONReader,
+// and the length of every string value that is inspected for embedded
+// documents or secrets in text: a longer string becomes the marker and the
+// operation reports ErrInputLimit.
 func WithMaxInputBytes(bytes int64) Option {
 	return func(cfg *config) error {
 		if bytes <= 0 {

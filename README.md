@@ -223,7 +223,8 @@ m.MaskValue("message", "dial postgres://app:pass@db:5432/app failed")
 
 Two kinds of detectors run by default:
 
-- `key=value` and `key: value` pairs, with an optionally quoted key or value.
+- `key=value` and `key: value` pairs, with an optionally quoted key or value;
+  a key may start with `_`, `-` or `.`, so `--password=...` is a pair too.
   The policy judges the key as a field with `Source` `SourceText`, so the same
   rules that mask a `password` field mask `password=...` in a sentence. An
   omitted value becomes the marker, since text has no member to drop. After

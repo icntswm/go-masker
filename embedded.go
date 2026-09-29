@@ -3,6 +3,7 @@ package masker
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"reflect"
 	"strings"
@@ -101,6 +102,11 @@ func (m *Masker) inspectableScalar(value reflect.Value) (string, bool) {
 // secrets the text detectors find in it. It returns s itself and false when
 // nothing was masked.
 func (m *Masker) inspectString(s string, field Field, depth int, state inspectState) (string, bool) {
+	// A stopped operation masks everything that is left, so the string is not
+	// even parsed.
+	if *state.stop {
+		return m.cfg.marker, true
+	}
 	// The candidate is parsed before any walker sees its content, so the byte
 	// limit that caps MaskJSON input caps it too.
 	if int64(len(s)) > m.cfg.maxInputBytes {
@@ -213,6 +219,12 @@ func (m *Masker) inspectJSON(s string, field Field, depth int, state inspectStat
 	_, ok, _ := inner.appendValue(data, 0, rootField, depth+1, &out)
 	*state.nodes = inner.nodes
 	for _, innerErr := range inner.errs {
+		if innerErr.Code == CodeDepthLimit || innerErr.Code == CodeNodeLimit {
+			// A full outer list must not swallow the limit that stopped the
+			// operation.
+			addPriorityMaskError(state.errs, innerErr)
+			continue
+		}
 		addMaskError(state.errs, innerErr)
 	}
 	if inner.stop {
@@ -252,10 +264,18 @@ func (m *Masker) inspectForm(s string, field Field, depth int, state inspectStat
 // policy, treating a pair whose decision is zero as a string that may itself
 // carry a document. changed reports whether any pair was masked, omitted or
 // failed; an error is recorded in the shared state before it is returned.
+// errInspectStopped aborts a query rewrite once the operation has stopped;
+// the caller turns any error into the marker.
+var errInspectStopped = errors.New("inspection stopped")
+
 func (m *Masker) maskQueryValues(raw string, field Field, depth int, state inspectState, changed *bool) (string, error) {
 	return urlquery.Mask(raw, func(key, value string) (string, bool, error) {
 		member := Field{Key: key, Path: pathFor(field.Path, key), Source: SourceURLQuery, Kind: KindString}
 		masked, decided, keep := m.decideMember(member, value, depth, state)
+		if *state.stop {
+			// The rest of the query would be masked and then discarded.
+			return "", false, errInspectStopped
+		}
 		if decided {
 			if !keep || masked != value {
 				*changed = true

@@ -2,6 +2,7 @@ package masker
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -460,6 +461,28 @@ func TestEmbeddedOuterDecisionWins(t *testing.T) {
 }
 
 func TestEmbeddedDocumentFailures(t *testing.T) {
+	t.Run("limit inside embedded JSON survives a full error list", func(t *testing.T) {
+		policy := PolicyFunc(func(field Field) (Decision, error) {
+			if strings.HasPrefix(field.Key, "bad") {
+				return Decision{}, errors.New("dummy policy failure")
+			}
+			return Decision{}, nil
+		})
+		m, err := New(policy, WithMaxDepth(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document strings.Builder
+		document.WriteString("{")
+		for index := range maxMaskErrorsPerOperation {
+			fmt.Fprintf(&document, `"bad%d":"x",`, index)
+		}
+		document.WriteString(`"body":"{\"x\":1}"}`)
+		_, err = m.MaskJSON([]byte(document.String()))
+		if !errors.Is(err, ErrDepthLimit) {
+			t.Fatalf("the depth limit must not be dropped, got %v", err)
+		}
+	})
 	t.Run("rule panic inside embedded JSON", func(t *testing.T) {
 		policy := PolicyFunc(func(field Field) (Decision, error) {
 			if field.Key == "password" {
@@ -627,6 +650,7 @@ func TestEmbeddedJSONStreamMatchesDOM(t *testing.T) {
 		{name: "unchanged string", factory: standard, input: `{"url":"https://host/cb?user=alice&admin=1"}`},
 		{name: "rule panic", factory: panicking, input: `{"body":"{\"password\":\"dummy-secret\"}"}`},
 		{name: "node limit", factory: func(t *testing.T) *Masker { return newTestMasker(t, WithMaxNodes(2)) }, input: `{"body":"{\"password\":\"dummy\"}"}`},
+		{name: "null password", factory: standard, input: `{"password":null,"note":null,"body":"{\"token\":null,\"note\":null}"}`},
 	}
 
 	for _, test := range tests {

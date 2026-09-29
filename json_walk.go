@@ -34,10 +34,6 @@ func (w *jsonWalker) walk(value any, field Field, depth int) any {
 		w.fail(CodeNodeLimit, field, depth)
 		return w.masker.cfg.marker
 	}
-	if value == nil {
-		return nil
-	}
-
 	if field.Kind == KindInvalid {
 		field.Kind = jsonValueKind(value)
 	}
@@ -48,6 +44,8 @@ func (w *jsonWalker) walk(value any, field Field, depth int) any {
 	// encoding/json builds a private, non-aliased acyclic tree, so this walker
 	// mutates that tree in place and does not need reflection-style cycle state.
 	switch typed := value.(type) {
+	case nil:
+		return nil
 	case bool:
 		if w.masker.cfg.preserveSafe {
 			return typed
