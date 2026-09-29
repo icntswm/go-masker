@@ -287,3 +287,48 @@ func TestWriterSlogCompatibility(t *testing.T) {
 		t.Fatalf("secret reached the log: %s", buffer.String())
 	}
 }
+
+type syncWriter struct {
+	bytes.Buffer
+	synced int
+	err    error
+}
+
+func (w *syncWriter) Sync() error {
+	w.synced++
+	return w.err
+}
+
+func TestWriterSyncForwardsToDestination(t *testing.T) {
+	dst := &syncWriter{err: errors.New("disk full")}
+	w := NewWriter(dst, newCore(t))
+	syncer, ok := w.(interface{ Sync() error })
+	if !ok {
+		t.Fatal("writer has no Sync method, so zapcore.AddSync would drop syncing")
+	}
+	if err := syncer.Sync(); !errors.Is(err, dst.err) || dst.synced != 1 {
+		t.Fatalf("Sync() = %v after %d calls, want the destination's error after 1", err, dst.synced)
+	}
+
+	plain := NewWriter(&bytes.Buffer{}, newCore(t)).(interface{ Sync() error })
+	if err := plain.Sync(); err != nil {
+		t.Fatalf("Sync() on a destination without Sync = %v, want nil", err)
+	}
+}
+
+func TestWriterReplacesSplitRecord(t *testing.T) {
+	var buf bytes.Buffer
+	w := NewWriter(&buf, newCore(t))
+	for _, part := range []string{`{"password":"hun`, `ter2"}` + "\n"} {
+		if _, err := w.Write([]byte(part)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Contains(buf.String(), "hun") || strings.Contains(buf.String(), "ter2") {
+		t.Fatalf("part of a split record reached the output: %q", buf.String())
+	}
+	want := `{"message":"[REDACTED]"}{"message":"[REDACTED]"}` + "\n"
+	if buf.String() != want {
+		t.Fatalf("output = %q, want %q", buf.String(), want)
+	}
+}

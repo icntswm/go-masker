@@ -12,9 +12,12 @@ import (
 // NewWriter returns an io.Writer that masks every JSON line written to it
 // through core and writes the result to w. A logger writing one JSON object
 // per line, such as zerolog, produces masked lines; a line that cannot be
-// masked is replaced by {"message":"<marker>"} and never passes through. The
-// result is safe for concurrent use when w is, because the writer keeps no
-// mutable state.
+// masked is replaced by {"message":"<marker>"} and never passes through. Each
+// Write must carry whole lines: a record split across two calls is masked as
+// two broken documents and both halves are replaced. The result is safe for
+// concurrent use when w is, because the writer keeps no mutable state. Its
+// Sync method flushes w when w has one, so zapcore.AddSync keeps syncing the
+// real destination.
 func NewWriter(w io.Writer, core *masker.Masker) io.Writer {
 	r := writer{out: w, core: core, mark: masker.DefaultRedactionMarker}
 	if core != nil {
@@ -49,6 +52,15 @@ func (r writer) Write(p []byte) (int, error) {
 	// The caller's bytes are consumed regardless of how many bytes the
 	// masked result took, so success reports the input length.
 	return len(p), nil
+}
+
+// Sync flushes the destination when it provides a Sync method, as *os.File
+// does, and is a no-op otherwise.
+func (r writer) Sync() error {
+	if s, ok := r.out.(interface{ Sync() error }); ok {
+		return s.Sync()
+	}
+	return nil
 }
 
 // mask returns the masked form of p, keeping its newline separators exactly:

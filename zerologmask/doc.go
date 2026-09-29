@@ -17,6 +17,10 @@
 //
 //	logger := zerolog.New(zerologmask.NewWriter(zerolog.ConsoleWriter{Out: os.Stdout}, core))
 //
+// Every Write must carry whole lines. zerolog, log/slog and zap write each
+// record in one call; a record split across calls is replaced rather than
+// buffered, because a buffered prefix would make the writer stateful.
+//
 // A writer that routes by level, such as zerolog's MultiLevelWriter, loses
 // that routing when wrapped, because NewWriter implements io.Writer only:
 // wrap each destination instead. Keys are masked by the policy like any JSON

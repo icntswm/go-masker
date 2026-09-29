@@ -622,9 +622,12 @@ masking.
 not close the reader. `WithMaxInputBytes` is the primary protection against
 unbounded input, and the output is built before it is exposed to the caller.
 
-There is intentionally no streaming `io.Writer` API: once a writer
-has received a prefix, a later parse error cannot retract a potentially unsafe
-operation.
+There is intentionally no streaming `io.Writer` API for a single document:
+once a writer has received a prefix, a later parse error cannot retract a
+potentially unsafe operation. `zerologmask` does not break this rule. It masks
+whole lines, each a complete document, and writes nothing of a line until the
+line is masked; a record split across two `Write` calls is replaced by the
+fallback line rather than buffered.
 
 ### 9.2 Known JSON limitations
 
@@ -790,14 +793,15 @@ release it was built with and fails on a newer toolchain.
 
 The following items are outside the current scope:
 
-- JSON Lines support;
+- JSON Lines input to `MaskJSON` and `MaskJSONReader` (only `zerologmask`
+  splits lines);
 - integer map keys;
 - optional code generation;
 - a native `zap` core;
 - CookieNamePolicy;
 - partial-result mode that returns a safe partial tree together with local
   errors;
-- streaming `io.Writer` API.
+- streaming `io.Writer` API for a single document.
 
 Policy key bindings are compiled into a case-folded lookup during
 `NewKeyPolicy`. The per-`Masker` reflection metadata cache and direct JSON
