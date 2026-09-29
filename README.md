@@ -408,7 +408,7 @@ for every encoder. The policy sees `zap.Namespace` keys in the path, such as
 written into a `credentials` namespace are masked. Sampling, level filtering
 and `zapcore.Tee` branches keep working, because the inner core still decides
 what is written. The message is not masked, and an error field is logged as its
-masked text without zap's `errorVerbose` detail.
+masked text without zap's `errorVerbose` detail, also inside `zap.Dict`.
 
 ## Errors and fail-closed behavior
 
@@ -454,7 +454,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 7,245 lines of tests against 5,075 lines
+listed rather than asserted. There are 8,018 lines of tests against 5,704 lines
 of shipped code.
 
 | Check | Evidence |
@@ -464,7 +464,7 @@ of shipped code.
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
 | Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` against the real zerolog in a separate test-only module, so the library keeps no dependency; `zapmask` against the real zap in its own module |
 | Examples | 30, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 84.9% core, 90.7% `httpmask`, 88.6% `slogmask`, 94.9% `zerologmask`, 72.6% `zapmask` |
+| Coverage | 85.3% core, 90.7% `httpmask`, 91.8% `slogmask`, 94.9% `zerologmask`, 76.2% `zapmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 

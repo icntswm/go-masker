@@ -136,9 +136,13 @@ has no third-party dependencies.
 `zapmask` must import zap, so it is a separate published module with its own
 `go.mod` and `go.sum`, versioned by `zapmask/vX.Y.Z` tags. Its require lines
 are the minimum versions it supports. It masks fields, not encoded output:
-`Check` adds the wrapper itself, and `Write` masks the fields and writes them
-through the inner core's own `Check`, so sampling and the levels of each `Tee`
-branch keep deciding what is written. A `zap.Namespace` is decided as an
+`Check` asks the inner core's own `Check` first and, when it accepts the entry,
+adds a one-shot core that masks the fields and writes them into the entry the
+inner core returned, so sampling and the levels of each `Tee` branch keep
+deciding what is written, and a rejected entry is never masked. zap's own
+diagnostics inside a marshaler's output (`${key}Verbose`, and `${key}Error`
+for a failed or panicking member) are removed and the failed member becomes
+the marker, as at the top level. A `zap.Namespace` is decided as an
 object before the fields written into it, as `slogmask` does for groups. The
 entry (message, logger name, caller, stack) is not masked.
 

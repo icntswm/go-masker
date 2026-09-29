@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -455,6 +456,45 @@ func TestCoreRecoversMarshalerPanics(t *testing.T) {
 	}
 }
 
+// failingObject fails to marshal with an error that carries its data.
+type failingObject struct{}
+
+func (failingObject) MarshalLogObject(zapcore.ObjectEncoder) error {
+	return errors.New("dummy-callback")
+}
+
+func TestCoreScrubsNestedDiagnostics(t *testing.T) {
+	line, record := logFields(t, newMasker(t),
+		zap.Dict("request",
+			zap.NamedError("cause", verboseError{message: "failed"}),
+			zap.Object("session", failingObject{}),
+			zap.Stringer("token", panickingStringer{}),
+			zap.Array("items", zapcore.ArrayMarshalerFunc(func(enc zapcore.ArrayEncoder) error {
+				return enc.AppendObject(zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
+					zap.Error(verboseError{message: "item failed"}).AddTo(enc)
+					return nil
+				}))
+			})),
+			zap.String("user", "alice"),
+		),
+	)
+	if strings.Contains(line, "dummy") || strings.Contains(line, "PANIC") || strings.Contains(line, "Verbose") {
+		t.Fatalf("a nested zap diagnostic reached the log: %s", line)
+	}
+	request, _ := record["request"].(map[string]any)
+	if request["cause"] != "failed" || request["user"] != "alice" {
+		t.Fatalf("nested members were not kept: %s", line)
+	}
+	if request["session"] != masker.DefaultRedactionMarker || request["token"] != masker.DefaultRedactionMarker {
+		t.Fatalf("failed nested members were not redacted: %s", line)
+	}
+	for _, key := range []string{"sessionError", "tokenError"} {
+		if _, present := request[key]; present {
+			t.Fatalf("%s was logged: %s", key, line)
+		}
+	}
+}
+
 func TestCoreKeepsSampling(t *testing.T) {
 	var buffer bytes.Buffer
 	inner := zapcore.NewSamplerWithOptions(jsonCore(&buffer), time.Second, 1, 0)
@@ -464,6 +504,34 @@ func TestCoreKeepsSampling(t *testing.T) {
 	}
 	if lines := strings.Count(buffer.String(), "\n"); lines != 1 {
 		t.Fatalf("sampler did not drop repeats: %d lines", lines)
+	}
+}
+
+// countingStringer counts how often it is rendered.
+type countingStringer struct{ calls *atomic.Int32 }
+
+func (s countingStringer) String() string {
+	s.calls.Add(1)
+	return "value"
+}
+
+func TestCoreCheckHonorsSampler(t *testing.T) {
+	var buffer bytes.Buffer
+	inner := zapcore.NewSamplerWithOptions(jsonCore(&buffer), time.Hour, 1, 0)
+	logger := zap.New(NewCore(inner, newMasker(t)))
+	var calls atomic.Int32
+	for i := range 3 {
+		checked := logger.Check(zap.InfoLevel, "same message")
+		if (checked != nil) != (i == 0) {
+			t.Fatalf("Check %d returned %v, want an entry only for the first", i, checked)
+		}
+		if checked != nil {
+			checked.Write(zap.Stringer("value", countingStringer{&calls}))
+		}
+	}
+	logger.Info("same message", zap.Stringer("value", countingStringer{&calls}))
+	if lines := strings.Count(buffer.String(), "\n"); lines != 1 || calls.Load() != 1 {
+		t.Fatalf("sampled-out entries were masked or written: %d lines, %d renders", lines, calls.Load())
 	}
 }
 

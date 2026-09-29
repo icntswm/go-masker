@@ -75,27 +75,41 @@ func (c *maskCore) With(fields []zapcore.Field) zapcore.Core {
 	return &maskCore{inner: c.inner.With(masked), core: c.core, mark: c.mark, prefix: prefix, verdict: verdict}
 }
 
-// Check adds the masking core to the checked entry when the level is enabled.
-// The inner core is deliberately not added here: it is checked again in Write,
-// after the fields are masked, so an unmasked field can never reach it.
+// Check asks the inner core first, so a sampler or a Tee branch that rejects
+// the entry makes Logger.Check return nil before any field is masked. When the
+// inner core accepts it, the entry gets a one-shot core that masks the fields
+// and writes them into the inner core's checked entry: the inner cores are
+// never added to ce, so an unmasked field can never reach them, and the inner
+// Check runs once per entry, so sampling counts it once.
 func (c *maskCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	if c.Enabled(ent.Level) {
-		return ce.AddCore(ent, c)
+	if !c.Enabled(ent.Level) {
+		return ce
 	}
-	return ce
+	checked := c.inner.Check(ent, nil)
+	if checked == nil {
+		return ce
+	}
+	return ce.AddCore(ent, &entryCore{maskCore: c, checked: checked})
 }
 
 // Write masks the fields and writes the entry through the inner core's own
-// Check. The inner Check is what keeps sampling and the per-branch levels of a
-// Tee working: zap.NewProduction applies zap.WrapCore on top of its sampler,
-// so writing past the inner Check would silently disable sampling, and a
-// Tee's Write writes to every branch regardless of its level.
+// Check, for a caller that writes to the core without checking it first. The
+// inner Check is what keeps sampling and the per-branch levels of a Tee
+// working: zap.NewProduction applies zap.WrapCore on top of its sampler, so
+// writing past the inner Check would silently disable sampling, and a Tee's
+// Write writes to every branch regardless of its level.
 func (c *maskCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
-	masked, _, _ := c.mask(fields)
 	checked := c.inner.Check(ent, nil)
 	if checked == nil {
 		return nil
 	}
+	return c.write(checked, fields)
+}
+
+// write masks fields and writes them into checked, an entry the inner core
+// has already accepted.
+func (c *maskCore) write(checked *zapcore.CheckedEntry, fields []zapcore.Field) error {
+	masked, _, _ := c.mask(fields)
 	// CheckedEntry.Write reports an inner write error only through its
 	// ErrorOutput, and the outer entry reports what Write returns to the
 	// logger's own ErrorOutput, so the printed text is captured here and
@@ -105,6 +119,25 @@ func (c *maskCore) Write(ent zapcore.Entry, fields []zapcore.Field) error {
 	checked.Write(masked...)
 	// checked has returned to zap's pool and must not be touched from here on.
 	return sink.err()
+}
+
+// entryCore is the core Check adds for one entry: it holds the entry the inner
+// core accepted and writes the masked fields into it. zap writes a checked
+// entry once, so checked is written at most once.
+type entryCore struct {
+	*maskCore
+	checked *zapcore.CheckedEntry
+}
+
+// Write masks the fields and writes them into the entry the inner core
+// accepted in Check.
+func (e *entryCore) Write(_ zapcore.Entry, fields []zapcore.Field) error {
+	checked := e.checked
+	if checked == nil {
+		return nil
+	}
+	e.checked = nil
+	return e.write(checked, fields)
 }
 
 // Sync flushes the inner core.
@@ -284,6 +317,7 @@ func (c *maskCore) masked(field zapcore.Field, prefix string) (result zapcore.Fi
 		if err := obj.MarshalLogObject(enc); err != nil {
 			return c.marker(field.Key), true
 		}
+		c.scrub(enc.Fields)
 		return c.maskedAny(field, mf, enc.Fields)
 	case zapcore.ArrayMarshalerType:
 		arr, ok := field.Interface.(zapcore.ArrayMarshaler)
@@ -294,6 +328,7 @@ func (c *maskCore) masked(field zapcore.Field, prefix string) (result zapcore.Fi
 		if err := enc.AddArray("v", arr); err != nil {
 			return c.marker(field.Key), true
 		}
+		c.scrub(enc.Fields)
 		return c.maskedAny(field, mf, enc.Fields["v"])
 	case zapcore.InlineMarshalerType:
 		return c.maskedInline(field, prefix)
@@ -359,6 +394,7 @@ func (c *maskCore) maskedInline(field zapcore.Field, prefix string) (zapcore.Fie
 	if err := obj.MarshalLogObject(enc); err != nil {
 		return c.marker(field.Key), true
 	}
+	c.scrub(enc.Fields)
 	members := make(map[string]any, len(enc.Fields))
 	for key, value := range enc.Fields {
 		member := masker.Field{Key: key, Path: path(prefix, key), Source: masker.SourceMap}
@@ -376,6 +412,45 @@ func (c *maskCore) maskedInline(field zapcore.Field, prefix string) (zapcore.Fie
 		members[key] = plain(masked)
 	}
 	return zap.Inline(maskedObject(members)), true
+}
+
+// scrub removes zap's own diagnostics from a marshaler's output, in place and
+// at every depth. A marshaler that encodes zap fields, such as zap.Dict, runs
+// Field.AddTo, which writes them as ordinary strings the policy cannot tell
+// from data: a rich error adds ${key}Verbose beside its text, and a failed
+// member or a panic in Error or String adds ${key}Error with the raw error or
+// panic value. The top-level field drops the verbose text and replaces a
+// failure with the marker, so a nested one is written the same way: the
+// verbose key is dropped, and the failed member becomes the marker while its
+// ${key}Error key is dropped. A data member that happens to look like a
+// diagnostic is handled the same way, which only ever hides data.
+func (c *maskCore) scrub(value any) {
+	switch value := value.(type) {
+	case map[string]any:
+		for key, member := range value {
+			text, isText := member.(string)
+			if base, ok := strings.CutSuffix(key, "Verbose"); ok && isText {
+				if _, present := value[base]; present {
+					delete(value, key)
+					continue
+				}
+			}
+			if base, ok := strings.CutSuffix(key, "Error"); ok && isText {
+				other, present := value[base]
+				_, isOtherText := other.(string)
+				if strings.HasPrefix(text, "PANIC=") || (present && !isOtherText) {
+					delete(value, key)
+					value[base] = c.mark
+					continue
+				}
+			}
+			c.scrub(member)
+		}
+	case []any:
+		for _, member := range value {
+			c.scrub(member)
+		}
+	}
 }
 
 // maskedObject writes the masked members of an inline marshaler. Members are

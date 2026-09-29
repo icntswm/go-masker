@@ -16,13 +16,15 @@
 //	}))
 //
 // The inner core keeps deciding what is written. Sampling, level filtering and
-// the branches of a zapcore.Tee still apply, because an entry is written
-// through the inner core's own Check. The entry itself (message, logger name,
+// the branches of a zapcore.Tee still apply, because the inner core's own
+// Check decides an entry before any field is masked. The entry itself (message, logger name,
 // caller, stack) is not masked: keep secrets out of the message and pass them
 // as fields.
 //
 // A field that cannot be masked, or whose masking panics, is replaced by the
 // redaction marker, never the original value. An error field is logged as its
 // masked Error text; zap's errorVerbose detail is dropped, because it is text
-// the policy never saw.
+// the policy never saw. The same holds inside an object such as zap.Dict: the
+// verbose text is dropped, and a member that fails or panics is logged as the
+// marker instead of zap's error text.
 package zapmask
