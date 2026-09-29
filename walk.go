@@ -654,6 +654,11 @@ func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, met
 		if w.nodes > w.masker.cfg.maxNodes {
 			w.fail(CodeNodeLimit, field, depth)
 			result = w.masker.cfg.marker
+		} else if value.Kind() == reflect.String && !utf8.ValidString(value.String()) {
+			// walk rejects invalid UTF-8 before any decision; this fast path
+			// must fail closed the same way.
+			w.fail(CodeInvalidUTF8, field, depth)
+			result = w.masker.cfg.marker
 		} else if handled, decisionResult := w.applyCompiledFieldDecision(value, field, metadata, depth); handled {
 			result = decisionResult
 		} else {
@@ -1042,13 +1047,16 @@ func collectFields(typ reflect.Type, prefix []int, depth int, stack map[reflect.
 				continue
 			}
 		}
-		name, omitted := jsonFieldName(field)
+		_, omitted := jsonFieldName(field)
 		if omitted {
 			continue
 		}
 		index := append(append([]int(nil), prefix...), i)
 		fieldType := field.Type
-		if field.Anonymous && name == field.Name {
+		// Only an embedding without a JSON name is promoted: encoding/json
+		// keeps `json:"Credentials"` a named object even when the name equals
+		// the Go field name, and the policy must see that key.
+		if field.Anonymous && !jsonFieldTagged(field) {
 			if fieldType.Kind() == reflect.Pointer {
 				fieldType = fieldType.Elem()
 			}

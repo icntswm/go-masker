@@ -2126,3 +2126,67 @@ func TestTextMarshalerWithLockIsNotCopied(t *testing.T) {
 	}
 	held.mu.Unlock()
 }
+
+type Credentials struct{ Value string }
+
+type reviewNamedEmbedding struct {
+	Credentials `json:"Credentials"`
+}
+
+func TestNamedEmbeddingIsNotPromoted(t *testing.T) {
+	m, err := New(DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := reviewNamedEmbedding{Credentials{Value: "dummy-secret"}}
+	got, err := m.MaskAny(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(want), `"Credentials":`) {
+		t.Fatalf("encoding/json no longer names the embedding: %s", want)
+	}
+	if fmt.Sprint(got) != "map[Credentials:[REDACTED]]" {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestFlatStructRejectsInvalidUTF8(t *testing.T) {
+	m, err := New(DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.MaskAny(struct{ Note string }{Note: string([]byte{0xff})})
+	if !errors.Is(err, ErrInvalidUTF8) {
+		t.Fatalf("err = %v, want ErrInvalidUTF8", err)
+	}
+}
+
+func TestStreamRuleErrorsKeepTheirPaths(t *testing.T) {
+	failing, err := NewRule("failing", func(RuleInput) (string, error) { return "", errors.New("dummy") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := NewKeyPolicy(Binding{Keys: []string{"token"}, Rule: failing})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := New(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.MaskJSON([]byte(`{"a":{"token":"dummy"},"b":{"token":"dummy"}}`))
+	var multi *MaskErrors
+	if !errors.As(err, &multi) || len(multi.Items) != 2 {
+		t.Fatalf("err = %v, want two errors", err)
+	}
+	for i, path := range []string{"$[a][token]", "$[b][token]"} {
+		if multi.Items[i].Path != path {
+			t.Fatalf("error %d path = %q, want %q", i, multi.Items[i].Path, path)
+		}
+	}
+}

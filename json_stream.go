@@ -235,6 +235,12 @@ func (w *streamJSONWalker) decide(field Field, data []byte, start, scalarEnd int
 		if isPanicError(err) {
 			code = CodePanic
 		}
+		// A policy that never reads paths leaves Field.Path empty; the error
+		// still names the exact location, and failures at different
+		// locations stay distinct.
+		if field.Path == "" {
+			field.Path = w.currentPath()
+		}
 		addUniqueRuleError(&w.errs, code, field, decision.Rule)
 		*out = appendJSONString(*out, w.masker.cfg.marker)
 		return true, 0, false
