@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/icntswm/go-masker/internal/detect"
 	"github.com/icntswm/go-masker/internal/urlquery"
 )
 
@@ -51,15 +52,28 @@ func embeddedCandidateBytes(s []byte) bool {
 	return false
 }
 
-// embeddedCandidateToken prefilters a raw JSON string token. Text without an
-// escape is scanned as it lies; only escaped tokens, which are rare, pay for
-// a decode before the candidate check.
-func embeddedCandidateToken(token []byte) bool {
+// inspectable reports, without allocating, whether inspectString may change
+// s: whether it may be an embedded document or holds something a text
+// detector finds. Walkers call it before building a path.
+func (m *Masker) inspectable(s string) bool {
+	return m.cfg.embedded && embeddedCandidate(s) ||
+		m.cfg.textDetectors && detect.Candidate(s, m.cfg.detectSet)
+}
+
+// inspectableToken is inspectable for a raw JSON string token. Text without
+// an escape is scanned as it lies; only escaped tokens, which are rare, pay
+// for a decode before the check.
+func (m *Masker) inspectableToken(token []byte) bool {
+	if !m.cfg.embedded && !m.cfg.textDetectors || len(token) < 2 {
+		return false
+	}
 	if bytes.IndexByte(token, '\\') >= 0 {
 		decoded, ok := streamJSONStringText(token)
-		return ok && embeddedCandidate(decoded)
+		return ok && m.inspectable(decoded)
 	}
-	return len(token) >= 2 && embeddedCandidateBytes(token[1:len(token)-1])
+	text := token[1 : len(token)-1]
+	return m.cfg.embedded && embeddedCandidateBytes(text) ||
+		m.cfg.textDetectors && detect.Candidate(text, m.cfg.detectSet)
 }
 
 type inspectState struct {
@@ -68,23 +82,24 @@ type inspectState struct {
 	stop  *bool
 }
 
-// embeddedScalar returns the text of a scalar value the walker may inspect
-// for an embedded document: only plain strings, never a json.Number, which no
-// JSON walker can produce as a document and which the reflection walkers must
-// therefore also leave alone.
-func embeddedScalar(value reflect.Value, embedded bool) (string, bool) {
-	if !embedded || value.Kind() != reflect.String || value.Type() == jsonNumberType {
+// inspectableScalar returns the text of a scalar value the walker may
+// inspect: only plain strings, never a json.Number, which no JSON walker can
+// produce as a document and which the reflection walkers must therefore also
+// leave alone.
+func (m *Masker) inspectableScalar(value reflect.Value) (string, bool) {
+	if value.Kind() != reflect.String || value.Type() == jsonNumberType {
 		return "", false
 	}
 	s := value.String()
-	if !embeddedCandidate(s) {
+	if !m.inspectable(s) {
 		return "", false
 	}
 	return s, true
 }
 
-// inspectString masks a document embedded in s. It returns s itself and false
-// when s is not a candidate or nothing was masked.
+// inspectString masks a document embedded in s or, when s is not one, the
+// secrets the text detectors find in it. It returns s itself and false when
+// nothing was masked.
 func (m *Masker) inspectString(s string, field Field, depth int, state inspectState) (string, bool) {
 	// The candidate is parsed before any walker sees its content, so the byte
 	// limit that caps MaskJSON input caps it too.
@@ -92,14 +107,19 @@ func (m *Masker) inspectString(s string, field Field, depth int, state inspectSt
 		addFieldError(state.errs, CodeInputLimit, field, depth)
 		return m.cfg.marker, true
 	}
-	if masked, changed, ok := m.inspectURL(s, field, depth, state); ok {
-		return masked, changed
+	if m.cfg.embedded {
+		if masked, changed, ok := m.inspectURL(s, field, depth, state); ok {
+			return masked, changed
+		}
+		if masked, changed, ok := m.inspectJSON(s, field, depth, state); ok {
+			return masked, changed
+		}
+		if masked, changed, ok := m.inspectForm(s, field, depth, state); ok {
+			return masked, changed
+		}
 	}
-	if masked, changed, ok := m.inspectJSON(s, field, depth, state); ok {
-		return masked, changed
-	}
-	if masked, changed, ok := m.inspectForm(s, field, depth, state); ok {
-		return masked, changed
+	if m.cfg.textDetectors {
+		return m.inspectText(s, field, depth, state)
 	}
 	return s, false
 }
@@ -234,62 +254,13 @@ func (m *Masker) inspectForm(s string, field Field, depth int, state inspectStat
 // failed; an error is recorded in the shared state before it is returned.
 func (m *Masker) maskQueryValues(raw string, field Field, depth int, state inspectState, changed *bool) (string, error) {
 	return urlquery.Mask(raw, func(key, value string) (string, bool, error) {
-		if *state.stop {
-			*changed = true
-			return m.cfg.marker, true, nil
-		}
 		member := Field{Key: key, Path: pathFor(field.Path, key), Source: SourceURLQuery, Kind: KindString}
-		// The checks mirror walker.walk for a node one level deeper: key
-		// validity, then depth, then the node count.
-		if !utf8.ValidString(key) {
-			m.failInspect(state, CodeInvalidUTF8, member, depth+1)
-			*changed = true
-			return m.cfg.marker, true, nil
-		}
-		if depth+1 > m.cfg.maxDepth {
-			m.failInspect(state, CodeDepthLimit, member, depth+1)
-			*changed = true
-			return m.cfg.marker, true, nil
-		}
-		*state.nodes++
-		if *state.nodes > m.cfg.maxNodes {
-			m.failInspect(state, CodeNodeLimit, member, depth+1)
-			*changed = true
-			return m.cfg.marker, true, nil
-		}
-		decision, err := callPolicy(m.policy, member)
-		if err != nil {
-			code := CodePolicyFailure
-			if isPanicError(err) {
-				code = CodePanic
-			}
-			addFieldError(state.errs, code, member, 0)
-			*changed = true
-			return m.cfg.marker, true, nil
-		}
-		if decision.Omit {
-			*changed = true
-			return "", false, nil
-		}
-		if !isNilRule(decision.Rule) {
-			result, applyErr := applyRule(decision.Rule, RuleInput{
-				Value:     value,
-				Kind:      KindString,
-				Redaction: m.cfg.marker,
-			})
-			if applyErr != nil {
-				code := CodeRuleFailure
-				if isPanicError(applyErr) {
-					code = CodePanic
-				}
-				addRuleError(state.errs, code, member, decision.Rule)
-				*changed = true
-				return m.cfg.marker, true, nil
-			}
-			if result != value {
+		masked, decided, keep := m.decideMember(member, value, depth, state)
+		if decided {
+			if !keep || masked != value {
 				*changed = true
 			}
-			return result, true, nil
+			return masked, keep, nil
 		}
 		if nested, nestedChanged := m.inspectString(value, member, depth+1, state); nestedChanged {
 			*changed = true
@@ -297,6 +268,61 @@ func (m *Masker) maskQueryValues(raw string, field Field, depth int, state inspe
 		}
 		return value, true, nil
 	})
+}
+
+// decideMember decides one member found inside a string, a query pair or a
+// key=value pair of text, as walker.walk decides a node one level deeper.
+// decided is false when the policy left the member alone; otherwise masked
+// is its new value, or keep is false when the policy omits it. Failures are
+// recorded in the shared state and decide the member as the marker.
+func (m *Masker) decideMember(member Field, value string, depth int, state inspectState) (masked string, decided, keep bool) {
+	if *state.stop {
+		return m.cfg.marker, true, true
+	}
+	// The checks mirror walker.walk: key validity, then depth, then the node
+	// count.
+	if !utf8.ValidString(member.Key) {
+		m.failInspect(state, CodeInvalidUTF8, member, depth+1)
+		return m.cfg.marker, true, true
+	}
+	if depth+1 > m.cfg.maxDepth {
+		m.failInspect(state, CodeDepthLimit, member, depth+1)
+		return m.cfg.marker, true, true
+	}
+	*state.nodes++
+	if *state.nodes > m.cfg.maxNodes {
+		m.failInspect(state, CodeNodeLimit, member, depth+1)
+		return m.cfg.marker, true, true
+	}
+	decision, err := callPolicy(m.policy, member)
+	if err != nil {
+		code := CodePolicyFailure
+		if isPanicError(err) {
+			code = CodePanic
+		}
+		addFieldError(state.errs, code, member, 0)
+		return m.cfg.marker, true, true
+	}
+	if decision.Omit {
+		return "", true, false
+	}
+	if isNilRule(decision.Rule) {
+		return value, false, true
+	}
+	result, applyErr := applyRule(decision.Rule, RuleInput{
+		Value:     value,
+		Kind:      KindString,
+		Redaction: m.cfg.marker,
+	})
+	if applyErr != nil {
+		code := CodeRuleFailure
+		if isPanicError(applyErr) {
+			code = CodePanic
+		}
+		addRuleError(state.errs, code, member, decision.Rule)
+		return m.cfg.marker, true, true
+	}
+	return result, true, true
 }
 
 // strictFormText reports whether every '&'-separated part of s is a non-empty

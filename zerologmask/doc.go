@@ -28,8 +28,10 @@
 // MultiLevelWriter or FilteredLevelWriter, loses that when wrapped and
 // receives every level, because NewWriter implements io.Writer only: wrap
 // each destination instead. Keys are masked by the policy like any JSON
-// document, and the re-encoded line lists them in sorted order; the message
-// text itself is not inspected by key, so keep secrets out of the message.
+// document, and the re-encoded line lists them in sorted order. The message
+// is searched by the core masker's text detectors like any other string,
+// which catches a password=... or Bearer token written into it; that is a
+// safety net, so still pass secrets as fields.
 // A line that is not a JSON document, or that exceeds the masker's input
 // limit, is replaced by {"message":"<marker>"}: the original line is never
 // written. zerolog built with the binary_log tag writes CBOR rather than

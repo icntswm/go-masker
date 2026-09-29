@@ -113,9 +113,11 @@ func TestEmbeddedURLStrings(t *testing.T) {
 			want:  "mailto:alice@example.com?token=dummy",
 		},
 		{
+			// Prose is not parsed as a URL; the text detectors still find the
+			// token=... pair in it.
 			name:  "URL with a space is prose",
 			value: "https://host/cb?token=dummy token",
-			want:  "https://host/cb?token=dummy token",
+			want:  "https://host/cb?token=[REDACTED] token",
 		},
 		{
 			// A URL-shaped string whose query does not parse fails closed:
@@ -558,8 +560,8 @@ func TestEmbeddedDocumentFailures(t *testing.T) {
 	})
 }
 
-func TestWithoutEmbeddedDocuments(t *testing.T) {
-	m := newTestMasker(t, WithoutEmbeddedDocuments())
+func TestWithoutValueInspection(t *testing.T) {
+	m := newTestMasker(t, WithoutValueInspection())
 	tests := []struct {
 		name  string
 		key   string

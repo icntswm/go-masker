@@ -70,6 +70,7 @@ go-masker/
 ├── .golangci.yml
 ├── doc.go
 ├── embedded.go
+├── text.go
 ├── errors.go
 ├── json.go
 ├── json_encode.go
@@ -97,6 +98,7 @@ go-masker/
 │   └── *_test.go
 ├── internal/jsonline/       # line-masking engine of both writers
 ├── internal/urlquery/       # query parser shared by httpmask and embedded.go
+├── internal/detect/         # secret detectors for free text
 ├── zerologmask/
 │   ├── doc.go
 │   ├── writer.go
@@ -704,6 +706,36 @@ are kept. A URL whose query cannot be parsed becomes the marker without an
 error, so one unusual link does not fail the surrounding document.
 `WithoutEmbeddedDocuments()` disables the inspection.
 
+### 9.4 Secrets inside text
+
+A string that no document grammar accepts goes to the text detectors
+(`text.go`, `internal/detect`). The prefilter is `detect.Candidate`, which is
+exact rather than approximate: it runs the same scanners as `detect.Find`
+and stops at the first hit, so a string pays for a path only when something
+will be found. Both are generic over `~string | ~[]byte`, so the stream
+walker checks a raw token without converting it, and neither allocates on a
+miss.
+
+`detect.Find` is one forward pass returning two lists:
+
+- spans, secrets recognized by shape: the credential after `Bearer`/`Basic`,
+  a PEM private key body, a JWT, provider tokens, URL userinfo, and, when
+  enabled, Luhn-valid card numbers and AWS key ids. Scanning resumes after a
+  span, never inside it;
+- pairs, `key=value` or `key: value` with optional quotes. Scanning resumes at
+  the value, so a token inside the value of an undecided key is still found.
+  Nested values share one measured run, which keeps text such as `a=a=a=…`
+  linear.
+
+`inspectText` decides every pair through `decideMember`, the same routine that
+decides a query pair (validity, depth, node count, policy, rule, errors),
+with `SourceText`. Every decided pair and every span becomes an edit;
+overlapping edits resolve to the outermost, so a decided pair covers a span
+inside its value. An omitted pair value becomes the marker, a card number
+keeps its last four digits, and the text between edits is copied unchanged.
+`WithoutTextDetectors()` disables this layer and `WithoutValueInspection()`
+both layers.
+
 ## 10. HTTP adapter
 
 `httpmask` is a subpackage of the same module:
@@ -787,7 +819,9 @@ and pass the next.
 - Cookie full-redaction behavior;
 - memory retention of source strings;
 - the inability to prove arbitrary custom Rule semantic safety;
-- free text in log messages, which the logger adapters do not mask.
+- secrets in free text that have neither a key nor a recognizable shape,
+  which the text detectors cannot find, and slog message text, which
+  `slogmask` does not inspect.
 
 ## 13. Testing and benchmarking
 

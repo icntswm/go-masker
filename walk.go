@@ -99,7 +99,7 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		return omittedResult, true, nil
 	}
 	if isNilRule(decision.Rule) {
-		if s, ok := embeddedScalar(reflected, m.cfg.embedded); ok {
+		if s, ok := m.inspectableScalar(reflected); ok {
 			nodes := 1
 			var errs []*MaskError
 			var stop bool
@@ -227,7 +227,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		if !ok {
 			return w.masker.cfg.marker
 		}
-		if w.masker.cfg.embedded && embeddedCandidate(text) {
+		if w.masker.inspectable(text) {
 			if masked, changed := w.inspect(text, field, depth); changed {
 				return masked
 			}
@@ -239,7 +239,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	switch value.Kind() {
 	case reflect.String:
 		result = w.safeScalar(value)
-		if s, ok := embeddedScalar(value, w.masker.cfg.embedded); ok {
+		if s, ok := w.masker.inspectableScalar(value); ok {
 			if masked, changed := w.inspect(s, field, depth); changed {
 				result = masked
 			}
@@ -688,7 +688,7 @@ func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, met
 			result = decisionResult
 		} else {
 			result = w.safeScalar(value)
-			if s, ok := embeddedScalar(value, w.masker.cfg.embedded); ok {
+			if s, ok := w.masker.inspectableScalar(value); ok {
 				if masked, changed := w.inspect(s, field, depth); changed {
 					result = masked
 				}

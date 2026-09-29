@@ -173,7 +173,7 @@ func (w *streamJSONWalker) appendValue(data []byte, start int, field Field, dept
 	switch kind {
 	case KindString:
 		token := data[start:scalarEnd]
-		if w.masker.cfg.embedded && embeddedCandidateToken(token) {
+		if w.masker.inspectableToken(token) {
 			decoded, ok := streamJSONStringText(token)
 			if !ok {
 				return start, false, false

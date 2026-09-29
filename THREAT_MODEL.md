@@ -66,9 +66,11 @@ values and field metadata remain reachable for that `Masker`'s lifetime. Code
 that constructs long-lived maskers for attacker-controlled streams of dynamic
 struct types should account for this retention risk.
 
-The logger adapters mask structured fields, not free text. `slogmask` leaves
-the message and built-in attributes as they are, and `zerologmask` and `zapmask`
-mask each JSON line by key, so a secret interpolated into the message text is logged.
+The logger adapters mask structured fields by key. `slogmask` leaves the
+message and built-in attributes as they are, so a secret interpolated into an
+slog message is logged. `zerologmask` and `zapmask` mask each JSON line by key
+and search the message like any other string with the text detectors described
+below, which catch only secrets with a key or a recognizable shape.
 The logger writers see only the serialized output: a line it cannot parse, or a
 record split across two writes, is replaced by the redaction marker rather
 than passed through, and a level-routing destination loses its routing when
@@ -84,6 +86,19 @@ header line is passed through as it is. Inspection shares the depth, node and
 input limits of the value around it, so nesting documents in strings cannot
 exceed them. `WithoutEmbeddedDocuments()` turns it off; a caller who does so
 accepts that a body or callback URL logged as a string is written unmasked.
+
+A string that is not a whole document is searched by text detectors: pairs
+such as `password=...` or `token: "..."`, whose key the policy judges under
+`SourceText`, and secrets with a recognizable shape — a `Bearer`/`Basic`
+credential, a PEM private key body, a JWT, provider tokens with a documented
+prefix, and URL userinfo inside a sentence. This is a heuristic safety net: a
+secret with neither a key nor a known shape, a key the policy does not know,
+or a value split by an unusual separator is not recognized, and a harmless
+value that happens to follow a sensitive key is masked. Card numbers and AWS
+key ids are detected only on request, because ordinary numbers and
+identifiers match them by chance. `WithoutTextDetectors()` turns the detectors
+off, and `WithoutValueInspection()` turns off every inspection of string
+content.
 
 URLs preserve paths by default for compatibility. Userinfo is always redacted,
 and so is the fragment unless the caller asks the HTTP adapter to keep it.

@@ -69,6 +69,7 @@ Each of those claims is checked by the suite; see
 - [Quick start](#quick-start)
 - [What is masked](#what-is-masked)
 - [Documents inside strings](#documents-inside-strings)
+- [Secrets inside text](#secrets-inside-text)
 - [Core concepts](#core-concepts)
 - [JSON](#json)
 - [Struct tags](#struct-tags)
@@ -204,6 +205,46 @@ value around it. A string that looks like a URL but whose query does not parse
 becomes the marker. A field whose own key the policy masks or omits is decided
 by that key and is never inspected. `WithoutEmbeddedDocuments()` turns the
 inspection off.
+
+## Secrets inside text
+
+A string that is not a whole document, such as a log message or an error
+text, is searched for secrets written into it. Only the secret is replaced;
+the rest of the text is kept byte for byte:
+
+```go
+m.MaskValue("message", "login failed: password=hunter2")
+// login failed: password=[REDACTED]
+m.MaskValue("message", "upstream said: Bearer eyJhbGciOi... rejected")
+// upstream said: Bearer [REDACTED] rejected
+m.MaskValue("message", "dial postgres://app:pass@db:5432/app failed")
+// dial postgres://[REDACTED]@db:5432/app failed
+```
+
+Two kinds of detectors run by default:
+
+- `key=value` and `key: value` pairs, with an optionally quoted key or value.
+  The policy judges the key as a field with `Source` `SourceText`, so the same
+  rules that mask a `password` field mask `password=...` in a sentence. An
+  omitted value becomes the marker, since text has no member to drop. After
+  `Authorization:` the value takes the `Bearer`/`Basic`/`Token` credential
+  with it.
+- Secrets recognizable by shape, masked whatever key stands before them: the
+  credential after `Bearer` or `Basic`, the body of a PEM private key (its
+  BEGIN and END lines stay), a JWT, provider tokens with a documented prefix
+  (`ghp_`, `github_pat_`, `glpat-`, `xox?-`, `sk_live_`, `AIza`, `npm_`, …)
+  and the userinfo of a URL written inside a sentence.
+
+Two detectors are opt-in, because ordinary text matches them by chance:
+`WithCardNumberDetection()` masks 13–19 digit numbers that pass the Luhn check
+with `CardRule`, keeping the last four digits, and `WithAWSKeyIDDetection()`
+masks AWS access key ids. `WithoutTextDetectors()` turns the text detectors
+off, and `WithoutValueInspection()` turns off both them and the documents
+above.
+
+Detection is a heuristic on top of the policy, not a replacement for it: a
+secret with no key and no known shape, such as a bare random password, is not
+recognized. Text without a candidate costs no allocation.
 
 ## Core concepts
 
@@ -417,8 +458,10 @@ masked line. A writer that routes or filters by level, such as a
 `zerolog.MultiLevelWriter` or `zerolog.FilteredLevelWriter`, loses that when
 wrapped and receives every level: wrap each destination instead. zerolog built
 with the `binary_log` tag writes CBOR, not JSON, and every line is replaced. A
-line the masker cannot parse is replaced by `{"message":"[REDACTED]"}`, and the
-message text itself is not masked: keep secrets out of the message.
+line the masker cannot parse is replaced by `{"message":"[REDACTED]"}`. The
+message is searched like any other string, as described in
+[Secrets inside text](#secrets-inside-text); that is a safety net, so still
+pass secrets as fields rather than in the message.
 
 ## zap
 
@@ -441,7 +484,8 @@ because the writer only sees what zap has decided to write. zap writes an
 error's `%+v` text under `keyVerbose`, a multi-error's parts under
 `keyCauses` and a panic while encoding a field under `keyError`; each of these
 is also decided as its base key, so `zap.NamedError("token", err)` does not
-log the token again under `tokenVerbose`. The console encoder does not write
+log the token again under `tokenVerbose`. The `msg` text is searched by the
+text detectors like any other string. The console encoder does not write
 JSON, and every one of its lines is replaced by the marker line.
 
 ## Errors and fail-closed behavior

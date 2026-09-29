@@ -28,6 +28,6 @@
 // zapcore.BufferedWriteSyncer flushes whole records; a record split across
 // calls is replaced rather than buffered, because a buffered prefix would
 // make the writer stateful. The re-encoded line lists its keys in sorted
-// order, and the message text itself is not inspected by key, so keep secrets
-// out of the message.
+// order. The message is searched by the core masker's text detectors like any
+// other string; that is a safety net, so still pass secrets as fields.
 package zapmask

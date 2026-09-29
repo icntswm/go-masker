@@ -436,18 +436,103 @@ func ExampleWithoutEmbeddedDocuments() {
 		panic(err)
 	}
 
-	plain, err := masker.New(masker.DefaultPolicy(), masker.WithoutEmbeddedDocuments())
+	// Without embedded documents the URL is no longer parsed, but the text
+	// detectors still find its userinfo and the token=... pair.
+	text, err := masker.New(masker.DefaultPolicy(), masker.WithoutEmbeddedDocuments())
 	if err != nil {
 		panic(err)
 	}
-	leaked, err := plain.MaskValue("note", value)
+	asText, err := text.MaskValue("note", value)
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Println(masked)
-	fmt.Println(leaked)
+	fmt.Println(asText)
 	// Output:
 	// https://%5BREDACTED%5D@h/cb?token=%5BREDACTED%5D
-	// https://u:dummy@h/cb?token=dummy-token
+	// https://[REDACTED]@h/cb?token=[REDACTED]
+}
+
+func ExampleWithoutValueInspection() {
+	m, err := masker.New(masker.DefaultPolicy(), masker.WithoutValueInspection())
+	if err != nil {
+		panic(err)
+	}
+	leaked, err := m.MaskValue("note", "retry with password=dummy-pass")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(leaked)
+	// Output:
+	// retry with password=dummy-pass
+}
+
+func ExampleMasker_MaskValue_secretsInText() {
+	m, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		panic(err)
+	}
+	for _, text := range []string{
+		"login failed: password=dummy-pass",
+		"upstream said: Bearer dummy-token-placeholder rejected",
+		"dial postgres://app:dummy@db:5432/app failed",
+	} {
+		masked, err := m.MaskValue("message", text)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(masked)
+	}
+	// Output:
+	// login failed: password=[REDACTED]
+	// upstream said: Bearer [REDACTED] rejected
+	// dial postgres://[REDACTED]@db:5432/app failed
+}
+
+func ExampleWithoutTextDetectors() {
+	m, err := masker.New(masker.DefaultPolicy(), masker.WithoutTextDetectors())
+	if err != nil {
+		panic(err)
+	}
+	masked, err := m.MaskValue("message", "login failed: password=dummy-pass")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(masked)
+	// Output:
+	// login failed: password=dummy-pass
+}
+
+func ExampleWithCardNumberDetection() {
+	m, err := masker.New(masker.DefaultPolicy(), masker.WithCardNumberDetection())
+	if err != nil {
+		panic(err)
+	}
+	// 4111 1111 1111 1111 is the well-known example Visa number.
+	masked, err := m.MaskValue("message", "paid with 4111 1111 1111 1111")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(masked)
+	// Output:
+	// paid with **** **** **** 1111
+}
+
+func ExampleWithAWSKeyIDDetection() {
+	m, err := masker.New(masker.DefaultPolicy(), masker.WithAWSKeyIDDetection())
+	if err != nil {
+		panic(err)
+	}
+	masked, err := m.MaskValue("message", "rotated AKIADUMMYEXAMPLE0000")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(masked)
+	// Output:
+	// rotated [REDACTED]
 }

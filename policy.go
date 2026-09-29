@@ -29,6 +29,9 @@ const (
 	SourceURLUserInfo
 	// SourceURLFragment identifies a URL fragment.
 	SourceURLFragment
+	// SourceText identifies a key=value pair found inside free text, such as
+	// "password=..." in a log message.
+	SourceText
 )
 
 // ValueKind is the normalized kind visible to policies and rules.

@@ -54,7 +54,7 @@ func (w *jsonWalker) walk(value any, field Field, depth int) any {
 		}
 		return strconv.FormatBool(typed)
 	case string:
-		if w.masker.cfg.embedded && embeddedCandidate(typed) {
+		if w.masker.inspectable(typed) {
 			state := inspectState{nodes: &w.nodes, errs: &w.errs, stop: &w.stop}
 			if masked, changed := w.masker.inspectString(typed, field, depth, state); changed {
 				return masked

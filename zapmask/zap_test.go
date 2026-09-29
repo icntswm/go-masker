@@ -95,6 +95,16 @@ func TestZapLines(t *testing.T) {
 	}
 }
 
+// TestZapMessageText checks that the message is searched by the text
+// detectors.
+func TestZapMessageText(t *testing.T) {
+	got := maskLines(t, newCore(t), `{"level":"error","msg":"upstream said Bearer dummy-token-placeholder"}`)
+	want := `{"level":"error","msg":"upstream said Bearer [REDACTED]"}` + "\n"
+	if got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
 func TestZapBufferedLines(t *testing.T) {
 	// zapcore.BufferedWriteSyncer flushes several records in one Write.
 	var buffer bytes.Buffer

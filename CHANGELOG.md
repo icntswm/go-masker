@@ -17,6 +17,16 @@ API may still change, and every such change is listed here.
   request body logged as a string no longer leaks the secrets inside it. This
   is on by default in every API and adapter; `WithoutEmbeddedDocuments()`
   turns it off. A string is rewritten only when something in it was masked.
+- Secrets inside free text are masked: a string that is not a whole document,
+  such as a log message, is searched for `key=value` and `key: value` pairs,
+  whose key the policy judges under the new `SourceText`, and for secrets
+  recognizable by shape: the credential after `Bearer` or `Basic`, PEM private
+  key bodies, JWTs, provider tokens with a documented prefix and URL userinfo.
+  Only the secret is replaced. The message of a `zerologmask` or `zapmask`
+  line is searched too. `WithCardNumberDetection()` and
+  `WithAWSKeyIDDetection()` add opt-in detectors; `WithoutTextDetectors()`
+  turns the detectors off and `WithoutValueInspection()` turns off both
+  detectors and embedded documents.
 - `zapmask` package: `NewWriteSyncer(w, core)` masks the JSON lines zap's JSON
   encoder writes, after encoding. It has the `Write` and `Sync` methods of
   `zapcore.WriteSyncer`, so it goes to `zapcore.NewCore` directly. A key zap

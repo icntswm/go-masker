@@ -65,6 +65,19 @@ func TestReadmeZerologOutput(t *testing.T) {
 	}
 }
 
+// TestZerologMessageText checks that the message is searched by the text
+// detectors, while an ordinary message is left as it is.
+func TestZerologMessageText(t *testing.T) {
+	got := maskLines(t, newCore(t),
+		`{"level":"error","message":"login failed: password=dummy-pass"}`,
+		`{"level":"info","message":"served in 12ms at 2026-09-29T21:00:00Z"}`)
+	want := `{"level":"error","message":"login failed: password=[REDACTED]"}` + "\n" +
+		`{"level":"info","message":"served in 12ms at 2026-09-29T21:00:00Z"}` + "\n"
+	if got != want {
+		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
 // TestZerologLeavesDiagnosticSuffixesAlone checks that zerolog, which writes
 // no diagnostic keys, keeps a key such as tokenError as any other key: the
 // zap suffix rule does not apply here, while zapmask decides the same key as
