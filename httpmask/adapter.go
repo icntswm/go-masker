@@ -1,13 +1,14 @@
 package httpmask
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 
 	"github.com/icntswm/go-masker"
+	"github.com/icntswm/go-masker/internal/urlquery"
 )
 
 type config struct{ preserveFragment bool }
@@ -21,11 +22,6 @@ type Adapter struct {
 	core *masker.Masker
 	cfg  config
 	mark string
-}
-
-type queryPair struct {
-	key   string
-	value string
 }
 
 // New creates an HTTP adapter around a configured core masker.
@@ -156,87 +152,36 @@ func (a *Adapter) maskFragment(result *url.URL) {
 	result.RawFragment = ""
 }
 
-// maxQueryPrealloc bounds the query pair slice preallocated from the separator
-// count.
-const maxQueryPrealloc = 1024
-
 func (a *Adapter) maskQuery(raw string) (string, error) {
-	// One separator does not imply one pair: a query of nothing but "&" would
-	// preallocate a pair per byte, turning a few megabytes of input into tens
-	// of megabytes of scratch. Start from a bounded hint and let append grow.
-	pairs := make([]queryPair, 0, min(strings.Count(raw, "&")+1, maxQueryPrealloc))
-	remaining := raw
-	for remaining != "" {
-		var part string
-		part, remaining, _ = strings.Cut(remaining, "&")
-		if strings.Contains(part, ";") {
-			return "", fmt.Errorf("httpmask: invalid query")
-		}
-		if part == "" {
-			continue
-		}
-
-		key, value, _ := strings.Cut(part, "=")
-		if key == "" {
-			continue
-		}
-		key, err := url.QueryUnescape(key)
-		if err != nil {
-			return "", fmt.Errorf("httpmask: invalid query")
-		}
-		value, err = url.QueryUnescape(value)
-		if err != nil {
-			return "", fmt.Errorf("httpmask: invalid query")
-		}
-
-		pairs = append(pairs, queryPair{key: key, value: value})
+	query, err := urlquery.Mask(raw, a.maskQueryPair)
+	if errors.Is(err, urlquery.ErrInvalidQuery) {
+		return "", fmt.Errorf("httpmask: invalid query")
 	}
+	return query, err
+}
 
-	if len(pairs) == 0 {
-		return "", nil
+// maskQueryPair decides one decoded query parameter through the core policy.
+func (a *Adapter) maskQueryPair(key, value string) (string, bool, error) {
+	field := masker.Field{
+		Key:    key,
+		Path:   "$[" + key + "]",
+		Source: masker.SourceURLQuery,
+		Kind:   masker.KindString,
 	}
-	slices.SortStableFunc(pairs, func(left, right queryPair) int {
-		return strings.Compare(left.key, right.key)
-	})
-
-	var builder strings.Builder
-	builder.Grow(len(raw))
-	for start := 0; start < len(pairs); {
-		end := start + 1
-		for end < len(pairs) && pairs[end].key == pairs[start].key {
-			end++
-		}
-		field := masker.Field{
-			Key:    pairs[start].key,
-			Path:   "$[" + pairs[start].key + "]",
-			Source: masker.SourceURLQuery,
-			Kind:   masker.KindString,
-		}
-		keyEscaped := url.QueryEscape(pairs[start].key)
-		for index := start; index < end; index++ {
-			masked, maskErr := a.core.MaskField(field, pairs[index].value)
-			if maskErr != nil {
-				return "", maskErr
-			}
-			// An omitted parameter is dropped from the query, matching how an
-			// omitted field disappears from a masked document.
-			if masked == nil {
-				continue
-			}
-			maskedValue, ok := masked.(string)
-			if !ok {
-				return "", fmt.Errorf("httpmask: invalid masked query result")
-			}
-			if builder.Len() > 0 {
-				builder.WriteByte('&')
-			}
-			builder.WriteString(keyEscaped)
-			builder.WriteByte('=')
-			builder.WriteString(url.QueryEscape(maskedValue))
-		}
-		start = end
+	masked, err := a.core.MaskField(field, value)
+	if err != nil {
+		return "", false, err
 	}
-	return builder.String(), nil
+	// An omitted parameter is dropped from the query, matching how an
+	// omitted field disappears from a masked document.
+	if masked == nil {
+		return "", false, nil
+	}
+	maskedValue, ok := masked.(string)
+	if !ok {
+		return "", false, fmt.Errorf("httpmask: invalid masked query result")
+	}
+	return maskedValue, true, nil
 }
 
 // URLString parses and masks a URL string.
