@@ -1,6 +1,7 @@
 package slogmask
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
 	"reflect"
@@ -212,7 +213,9 @@ func basicScalar(raw any) (slog.Value, bool) {
 
 // isNil reports a nil interface, or a pointer or interface chain that ends in
 // nil, which masking normalizes to nil without an Omit decision. A nil map or
-// slice is normalized to an empty container instead, so it does not count.
+// slice is normalized to an empty container instead, so it does not count,
+// but a json.RawMessage that is nil or holds null masks to nil like encoding/json
+// logs it.
 func isNil(raw any) bool {
 	if raw == nil {
 		return true
@@ -234,6 +237,9 @@ func isNil(raw any) bool {
 			seen[value.Pointer()] = struct{}{}
 		}
 		value = value.Elem()
+	}
+	if message, ok := value.Interface().(json.RawMessage); ok {
+		return message == nil || string(bytes.TrimSpace(message)) == "null"
 	}
 	return false
 }

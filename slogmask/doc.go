@@ -11,4 +11,11 @@
 // keys is masked unless its value has the built-in type: a top-level string
 // attribute named msg cannot be told apart from the message. A masking
 // failure writes the redaction marker, never the original value.
+//
+// A json.RawMessage attribute is logged as masked JSON, not as base64.
+//
+// Masking happens only in a handler that calls ReplaceAttr, such as
+// slog.TextHandler and slog.JSONHandler. The default handler used before
+// slog.SetDefault, and a third-party handler that ignores HandlerOptions,
+// write attributes unmasked.
 package slogmask

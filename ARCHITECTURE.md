@@ -179,6 +179,11 @@ The normalized result contract is:
   standard base64 form, as `encoding/json` renders them; a byte slice whose
   elements implement `MarshalText` is walked element by element instead, and
   a failing or panicking `MarshalText` fails closed;
+- a `json.RawMessage` is decoded, with `json.Number` precision, and walked like
+  any other map or slice, because `encoding/json` embeds it as is and base64
+  would hide nothing a reader cannot decode. Its bytes are charged against the
+  node limit before decoding, and a message that is not a single valid JSON
+  value fails closed with `ErrInvalidJSON`;
 - `MarshalText` runs on a copy of its receiver, so a method that updates its
   receiver cannot mutate the input. Only receivers without pointers, maps,
   channels, functions, interfaces, or locks are copied, and a slice in one
@@ -840,8 +845,10 @@ fall back to the original value when masking returns an error.
   retained only when there are more than four digits.
 - Reflection inputs with invalid UTF-8 fail closed with `ErrInvalidUTF8`.
 - `zerologmask` masks whole lines only: a record split across two `Write`
-  calls is replaced by the fallback line, and wrapping a level-routing
-  destination such as zerolog's `MultiLevelWriter` loses its routing.
+  calls is replaced by the fallback line, and wrapping a level-routing or
+  level-filtering destination such as zerolog's `MultiLevelWriter` or
+  `FilteredLevelWriter` loses its routing. zerolog's `binary_log` build writes
+  CBOR, and every such line is replaced.
 - A single JSON object with very many members uses a full-key hash for duplicate
   lookup and `slices.SortFunc`; the per-document key cache is bounded and each
   hash chain is capped, so object width does not create an unbounded quadratic

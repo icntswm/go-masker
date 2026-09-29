@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
+## [Unreleased]
+
+### Changed
+
+- Reflection traversal decodes a `json.RawMessage` and masks it by its keys
+  like any other map, instead of rendering it as base64: `encoding/json`
+  embeds such a value as is, and base64 hid nothing that decoding could not
+  recover. A message that is not a single valid JSON value fails closed with
+  `ErrInvalidJSON`. `slogmask` logs it as masked JSON, and a nil or `null`
+  message as `null`.
+
 ## [0.3.0] - 2026-09-29
 
 ### Added

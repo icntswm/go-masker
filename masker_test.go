@@ -555,6 +555,57 @@ func TestTextMarshalerAndBytes(t *testing.T) {
 	}
 }
 
+func TestRawMessageIsMaskedByKeys(t *testing.T) {
+	m := newTestMasker(t, WithPreserveSafeTypes())
+	nested := json.RawMessage(`[{"token":"dummy"}]`)
+
+	payload := struct {
+		Body   json.RawMessage
+		Null   json.RawMessage
+		Nested map[string]any
+	}{
+		Body:   json.RawMessage(`{"password":"dummy-raw","count":12345678901234567890,"ok":true}`),
+		Null:   json.RawMessage(` null `),
+		Nested: map[string]any{"doc": &nested},
+	}
+	result, err := m.MaskAny(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"Body":{"count":12345678901234567890,"ok":true,"password":"[REDACTED]"},` +
+		`"Nested":{"doc":[{"token":"[REDACTED]"}]},"Null":null}`
+	if string(encoded) != want {
+		t.Fatalf("unexpected masked document:\n got %s\nwant %s", encoded, want)
+	}
+
+	redacted, err := m.MaskValue("password", json.RawMessage(`{"a":"dummy"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redacted != DefaultRedactionMarker {
+		t.Fatalf("a sensitive key did not redact the whole document: %#v", redacted)
+	}
+
+	for _, invalid := range []json.RawMessage{{}, []byte(`{"a":`), []byte(`{} {}`), {'"', 0xff, '"'}} {
+		got, err := m.MaskAny(map[string]any{"body": invalid})
+		if err == nil {
+			t.Fatalf("invalid message %q was accepted: %#v", invalid, got)
+		}
+		if got != DefaultRedactionMarker {
+			t.Fatalf("invalid message %q did not fail closed: %#v", invalid, got)
+		}
+	}
+
+	limited := newTestMasker(t, WithMaxNodes(8))
+	if _, err := limited.MaskAny(map[string]any{"body": json.RawMessage(`{"a":"0123456789"}`)}); !errors.Is(err, ErrNodeLimit) {
+		t.Fatalf("a large message was not charged against the node limit: %v", err)
+	}
+}
+
 func TestMaskAnyCycleFailsClosed(t *testing.T) {
 	m := newTestMasker(t)
 	value := map[string]any{}

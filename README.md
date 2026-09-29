@@ -190,7 +190,9 @@ so the shape of a list is never altered.
 
 Values are seen the way `encoding/json` would render them: a `time.Time`,
 `net.IP`, or any other `encoding.TextMarshaler` is masked as its text, and a
-`[]byte` as its base64 form. A `MarshalText` error or panic fails closed, and
+`[]byte` as its base64 form. A `json.RawMessage`, which `encoding/json` embeds
+as is, is decoded and masked by its keys like any other map; one that is not
+valid JSON fails closed. A `MarshalText` error or panic fails closed, and
 the method runs on a copy of the value, so it cannot change your data; a
 marshaler that holds pointers, maps, or locks is walked field by field instead.
 
@@ -344,6 +346,11 @@ an `error` is masked as its text, and an `Omit` decision drops the attribute.
 The built-in time, level, message, and source attributes, and the message text
 itself, are not masked: pass secrets as attributes, never in the message.
 
+Masking happens only in a handler that calls `ReplaceAttr`. The standard
+`TextHandler` and `JSONHandler` do; the default handler behind `slog.Info`
+before `slog.SetDefault`, and third-party handlers that ignore
+`HandlerOptions`, log attributes unmasked.
+
 ## zerolog
 
 The `zerologmask` adapter wraps the logger's writer, because zerolog serializes
@@ -360,9 +367,10 @@ Masking the output line covers every field, including those added through
 as in every JSON document the masker writes. Any logger that writes one JSON
 object per line works the same way. For human-readable output put the masking
 writer in front of `zerolog.ConsoleWriter`, so the console formats an already
-masked line. A writer that routes by level, such as a
-`zerolog.MultiLevelWriter`, loses that routing when wrapped: wrap each
-destination instead. A line the masker cannot parse is replaced by
+masked line. A writer that routes or filters by level, such as a
+`zerolog.MultiLevelWriter` or `zerolog.FilteredLevelWriter`, loses that when
+wrapped and receives every level: wrap each destination instead. zerolog built
+with the `binary_log` tag writes CBOR, not JSON, and every line is replaced. A line the masker cannot parse is replaced by
 `{"message":"[REDACTED]"}`, and the message text itself is not masked: keep
 secrets out of the message.
 
@@ -410,7 +418,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 6,914 lines of tests against 4,815 lines
+listed rather than asserted. There are 6,991 lines of tests against 4,882 lines
 of shipped code.
 
 | Check | Evidence |

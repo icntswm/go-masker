@@ -215,6 +215,32 @@ func TestReplaceAttrBuiltinKeysNilsAndNamedTypes(t *testing.T) {
 	}
 }
 
+func TestReplaceAttrMasksRawJSON(t *testing.T) {
+	nested := json.RawMessage(`{"token":"dummy-token"}`)
+	line, record := logRecord(t, newCore(t),
+		slog.Any("body", json.RawMessage(`{"password":"dummy-password","n":1}`)),
+		slog.Any("nested", map[string]any{"doc": &nested}),
+		slog.Any("null", json.RawMessage(`null`)),
+		slog.Any("empty", json.RawMessage(nil)),
+		slog.Any("broken", json.RawMessage(`{"password":`)),
+	)
+	if strings.Contains(line, "dummy-") {
+		t.Fatalf("embedded JSON bypassed masking: %s", line)
+	}
+	if !strings.Contains(line, `"body":{"n":1,"password":"[REDACTED]"}`) ||
+		!strings.Contains(line, `"nested":{"doc":{"token":"[REDACTED]"}}`) {
+		t.Fatalf("embedded JSON was not logged as masked JSON: %s", line)
+	}
+	for _, key := range []string{"null", "empty"} {
+		if value, present := record[key]; !present || value != nil {
+			t.Fatalf("null document %q was not logged as null: %s", key, line)
+		}
+	}
+	if record["broken"] != masker.DefaultRedactionMarker {
+		t.Fatalf("invalid embedded JSON did not fail closed: %s", line)
+	}
+}
+
 type leakyCount int
 
 func (leakyCount) MarshalJSON() ([]byte, error) { return []byte(`"dummy-leak"`), nil }

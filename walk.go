@@ -1,10 +1,12 @@
 package masker
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"reflect"
 	"slices"
 	"strconv"
@@ -157,6 +159,18 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 			return nil
 		}
 	}
+	if value.Type() == rawMessageType {
+		// Pointers into a json.RawMessage cannot form a cycle through the
+		// decoded tree, which is private to this walk.
+		w.releaseTracked(trackedStart)
+		decoded, ok := w.decodeRawMessage(value, field, depth)
+		if !ok {
+			return w.masker.cfg.marker
+		}
+		// The decoded root stands in for this node and is not counted twice.
+		w.nodes--
+		return w.walk(reflect.ValueOf(decoded), field, depth, tag)
+	}
 	// A value that renders as text is decided as a string, but MarshalText
 	// runs only once a rule or the safe output actually needs the text, so an
 	// omitted or fully redacted field never calls it.
@@ -210,6 +224,43 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	}
 	w.releaseTracked(trackedStart)
 	return result
+}
+
+// rawMessageType is json.RawMessage, which encoding/json embeds verbatim
+// instead of encoding it as base64 like any other byte slice.
+var rawMessageType = reflect.TypeFor[json.RawMessage]()
+
+// decodeRawMessage decodes an embedded JSON document so the walker can mask it
+// by its keys like any other map or slice. Base64 would hide nothing: it is
+// reversible, and encoding/json would log the document itself. A nil message
+// encodes as null; one that is not a single valid JSON value fails closed. The
+// document is charged one node per byte before it is decoded, as a byte slice
+// is before it is encoded.
+func (w *walker) decodeRawMessage(value reflect.Value, field Field, depth int) (any, bool) {
+	if value.IsNil() {
+		return nil, true
+	}
+	data := value.Bytes()
+	if !w.chargeCopy(len(data)) {
+		w.fail(CodeNodeLimit, field, depth)
+		return nil, false
+	}
+	if !utf8.Valid(data) {
+		w.fail(CodeInvalidUTF8, field, depth)
+		return nil, false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		w.fail(CodeInvalidJSON, field, depth)
+		return nil, false
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		w.fail(CodeInvalidJSON, field, depth)
+		return nil, false
+	}
+	return decoded, true
 }
 
 // textMarshalerType is the encoding.TextMarshaler interface type, resolved
