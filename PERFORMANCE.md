@@ -8,7 +8,7 @@
 | Go | go1.23.1 (cross-version results in the last section) |
 | Date | 2026-09-29 |
 | Benchmark revision | `eb378ce` |
-| Verification revision | `2bf4fa7` |
+| Verification revision | `2fe6986` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
 
@@ -99,9 +99,9 @@ of magnitude, from a single field to 10,000 records.
 
 ## Verified Go versions
 
-All checks below were run locally at `2bf4fa7`, where coverage is 83.4 % for
-the root package and 90.7 % for `httpmask`. The benchmark numbers above come
-from `eb378ce`, measured later; the version matrix below was not re-run for it.
+All checks below were run locally at `2fe6986`, where coverage is 84.9 % for
+the root package, 90.7 % for `httpmask`, and 88.6 % for `slogmask`. Timing
+numbers above were not re-measured for this run.
 
 | Go | build / vet / gofmt | `go test` | `-race` | `bench-matrix` | fuzz |
 |---|---|---|---|---|---|
@@ -125,18 +125,20 @@ Masking output must not change when the Go toolchain changes. A fixed corpus
 of 16 documents (valid, malformed, duplicate keys, escapes, `U+2028` and
 `U+2029`, large numbers, deep nesting, empty input) was masked under four
 redaction markers, together with `MaskAny`, `URL`, `URLString`, and `Headers`.
-Every output and every returned error was hashed:
+Every output and every returned error was hashed by
+[`internal/outputdigest`](internal/outputdigest/main.go):
 
 | Go | SHA-256 of all outputs |
 |---|---|
-| 1.23.0 | `69dc960c8bd6c8df…3a93b399` |
-| 1.24.6 | `69dc960c8bd6c8df…3a93b399` |
-| 1.25.0 | `69dc960c8bd6c8df…3a93b399` |
-| 1.26.4 | `69dc960c8bd6c8df…3a93b399` |
-| 1.27.0 | `69dc960c8bd6c8df…3a93b399` |
+| 1.23.0 | `391071b9c7922b9f…188c27cd` |
+| 1.24.6 | `391071b9c7922b9f…188c27cd` |
+| 1.25.0 | `391071b9c7922b9f…188c27cd` |
+| 1.26.4 | `391071b9c7922b9f…188c27cd` |
+| 1.27.0 | `391071b9c7922b9f…188c27cd` |
 
 Identical on every version, including Go 1.27, which reimplemented
-`encoding/json`.
+`encoding/json`. The same command run against `2bf4fa7` gives the same digest,
+so the changes since then did not alter output for this corpus.
 
 ## Caveats
 
