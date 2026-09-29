@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"reflect"
-	"strconv"
 	"strings"
 
 	masker "github.com/icntswm/go-masker"
+	"github.com/icntswm/go-masker/internal/adapter"
 )
 
 // ReplaceAttr returns a slog.HandlerOptions.ReplaceAttr function that masks
@@ -43,17 +43,16 @@ func (r replacer) replace(groups []string, attr slog.Attr) (result slog.Attr) {
 		// Handlers discard the zero attribute, so it carries nothing to mask.
 		return attr
 	}
-	// Resolve runs caller LogValue methods and masking runs caller rules;
-	// either may panic, and the original value must still stay out of the log.
+	// log/slog writes a broken line when ReplaceAttr drops every member of a
+	// group and another attribute follows it, so a group member is never
+	// dropped. Resolve runs caller LogValue methods and masking runs caller
+	// rules, which may panic; a panic, like a drop inside a group, must still
+	// keep the line whole: an Omit decision there logs the marker instead.
 	defer func() {
 		if recover() != nil {
 			result = r.marker(attr.Key)
+			return
 		}
-	}()
-	defer func() {
-		// log/slog writes a broken line when ReplaceAttr drops every member
-		// of a group and another attribute follows it, so a group member is
-		// never dropped: an Omit decision there logs the marker instead.
 		if len(groups) > 0 && result.Equal(slog.Attr{}) {
 			result = r.marker(attr.Key)
 		}
@@ -66,97 +65,65 @@ func (r replacer) replace(groups []string, attr slog.Attr) (result slog.Attr) {
 	if r.core == nil {
 		return r.marker(attr.Key)
 	}
-	if masked, decided := r.group(groups, attr.Key); decided {
-		return masked
+	// slog calls ReplaceAttr only for the members of a group, never for the
+	// group itself, so without this a sensitive group name such as
+	// credentials, whether from slog.Group, WithGroup or a LogValue result,
+	// would never be decided and its members would be logged under their
+	// own, harmless keys. A group the policy masks or omits replaces each
+	// member with the marker.
+	if len(groups) > 0 {
+		switch adapter.Group(r.core, groups) {
+		case adapter.Omit:
+			return slog.Attr{}
+		case adapter.Fail:
+			return r.marker(attr.Key)
+		}
 	}
-	field := masker.Field{Key: attr.Key, Path: path(groups, attr.Key), Source: masker.SourceMap}
 	switch value.Kind() {
 	case slog.KindString, slog.KindInt64, slog.KindUint64, slog.KindFloat64,
 		slog.KindBool, slog.KindDuration, slog.KindTime:
-		return r.scalar(attr.Key, value, field)
+		return r.scalar(groups, attr.Key, value)
 	case slog.KindAny:
-		return r.any(attr.Key, value, field)
+		return r.any(groups, attr.Key, value)
 	default:
 		return r.marker(attr.Key)
 	}
 }
 
-// group applies the policy to each enclosing group as an object. slog calls
-// ReplaceAttr only for the members of a group, never for the group itself, so
-// without this a sensitive group name such as credentials, whether from
-// slog.Group, WithGroup or a LogValue result, would never be decided and its
-// members would be logged under their own, harmless keys. A group the policy
-// masks or omits replaces each member with the marker.
-func (r replacer) group(groups []string, key string) (slog.Attr, bool) {
-	for index, name := range groups {
-		field := masker.Field{
-			Key:    name,
-			Path:   path(groups[:index], name),
-			Source: masker.SourceMap,
-			Kind:   masker.KindObject,
-		}
-		masked, err := r.core.MaskField(field, map[string]any{})
-		switch masked.(type) {
-		case map[string]any:
-			if err == nil {
-				continue
-			}
-		case nil:
-			if err == nil {
-				return slog.Attr{}, true
-			}
-		}
-		return r.marker(key), true
-	}
-	return slog.Attr{}, false
-}
-
-// scalar masks the text form of a value under its normalized kind. When the
-// policy leaves the text unchanged the original value is kept, so its type
-// survives.
-func (r replacer) scalar(key string, value slog.Value, field masker.Field) slog.Attr {
-	text := value.String()
-	if value.Kind() == slog.KindDuration {
-		text = strconv.FormatInt(int64(value.Duration()), 10)
-	}
-	field.Kind = scalarKind(value.Kind())
-	masked, err := r.core.MaskField(field, text)
-	if err != nil {
-		return r.marker(key)
-	}
-	if masked == nil {
-		return slog.Attr{}
-	}
-	maskedText, ok := masked.(string)
-	switch {
-	case !ok:
-		return r.marker(key)
-	case maskedText == text && maskedText != r.mark:
-		// A marker that happens to equal the text is still a redaction:
-		// the original value could render differently, as a duration does.
+// scalar decides and masks a scalar value through the core's scalar entry,
+// without the reflection walk of MaskField. When the policy leaves the text
+// unchanged the original value is kept, so its type survives.
+func (r replacer) scalar(groups []string, key string, value slog.Value) slog.Attr {
+	action, text := adapter.Scalar(r.core, groups, key, value)
+	switch action {
+	case adapter.Keep:
 		return slog.Attr{Key: key, Value: value}
+	case adapter.Replace:
+		return slog.String(key, text)
+	case adapter.Omit:
+		return slog.Attr{}
 	default:
-		return slog.String(key, maskedText)
+		return r.marker(key)
 	}
 }
 
-func (r replacer) any(key string, value slog.Value, field masker.Field) slog.Attr {
+func (r replacer) any(groups []string, key string, value slog.Value) slog.Attr {
 	raw := value.Any()
 	if err, ok := raw.(error); ok {
-		return r.scalar(key, slog.StringValue(err.Error()), field)
+		return r.scalar(groups, key, slog.StringValue(err.Error()))
 	}
 	// json.Number is a numeric value in a named string type; the core masks
 	// it as a number and keeps it a json.Number, so it stays a JSON number.
 	if _, ok := raw.(json.Number); ok {
-		return r.masked(key, raw, field)
+		return r.masked(key, raw, masker.Field{Key: key, Path: path(groups, key), Source: masker.SourceMap})
 	}
 	// slog reports named scalar types as KindAny. Their underlying value is
 	// logged instead of the named one, so a custom MarshalJSON or String
 	// method cannot put text into the log that the policy never saw.
 	if basic, ok := basicScalar(raw); ok {
-		return r.scalar(key, basic, field)
+		return r.scalar(groups, key, basic)
 	}
-	return r.masked(key, raw, field)
+	return r.masked(key, raw, masker.Field{Key: key, Path: path(groups, key), Source: masker.SourceMap})
 }
 
 func (r replacer) masked(key string, raw any, field masker.Field) slog.Attr {
@@ -171,6 +138,9 @@ func (r replacer) masked(key string, raw any, field masker.Field) slog.Attr {
 		// slog.Any("", nil) is the zero attribute, which handlers discard; a
 		// typed nil without methods still logs as null.
 		return slog.Any(key, (*struct{})(nil))
+	}
+	if !adapter.PreservesTypes(r.core) {
+		return slog.Any(key, masked)
 	}
 	return slog.Any(key, plain(masked))
 }
@@ -218,19 +188,6 @@ func builtinAttr(attr slog.Attr) bool {
 		return attr.Value.Kind() == slog.KindAny && ok && source != nil
 	}
 	return false
-}
-
-func scalarKind(kind slog.Kind) masker.ValueKind {
-	switch kind {
-	case slog.KindBool:
-		return masker.KindBool
-	case slog.KindInt64, slog.KindUint64, slog.KindFloat64, slog.KindDuration:
-		// A duration is an int64 of nanoseconds, the way the core and the JSON
-		// handler both treat time.Duration.
-		return masker.KindNumber
-	default:
-		return masker.KindString
-	}
 }
 
 // basicScalar converts a value of a named bool, integer, float, or string
