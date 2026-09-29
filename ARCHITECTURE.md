@@ -18,8 +18,9 @@ The initial scope includes:
 - built-in struct tags;
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
-- JSON log lines from zerolog, zap and other loggers through `jsonlogmask`,
-  which wraps the output writer.
+- JSON log lines from zerolog and other JSON-line loggers through
+  `zerologmask`, and from zap's JSON encoder through `zapmask`; both wrap the
+  output writer and share `internal/jsonline`.
 
 The security properties are more important than preserving the exact input
 shape or maximizing throughput:
@@ -93,11 +94,15 @@ go-masker/
 │   ├── doc.go
 │   ├── replace.go
 │   └── *_test.go
-├── jsonlogmask/
+├── internal/jsonline/       # line-masking engine of both writers
+├── zerologmask/
 │   ├── doc.go
 │   ├── writer.go
 │   └── *_test.go
-├── zerologmask/             # deprecated alias of jsonlogmask
+├── zapmask/
+│   ├── doc.go
+│   ├── writer.go
+│   └── *_test.go
 ├── testdata/
 │   └── security_decisions/
 ├── internal/
@@ -123,7 +128,7 @@ traversal engine.
 
 The module has no third-party dependencies, so the repository contains no
 `go.sum`. Benchmarks live in the root package and add no dependency of their
-own. `jsonlogmask` is tested against lines captured from the real zerolog and
+own. `zerologmask` and `zapmask` are tested against lines captured from the real zerolog and
 zap rather than against the loggers, so the tests need no dependency either;
 the captured lines are recaptured when a logger changes its output format.
 
@@ -653,7 +658,7 @@ the call with `ErrInvalidJSON` rather than let a stalled reader spin forever.
 
 There is intentionally no streaming `io.Writer` API for a single document:
 once a writer has received a prefix, a later parse error cannot retract a
-potentially unsafe operation. `jsonlogmask` does not break this rule. It masks
+potentially unsafe operation. The logger writers do not break this rule. It masks
 whole lines, each a complete document, and writes nothing of a line until the
 line is masked; a record split across two `Write` calls is replaced by the
 fallback line rather than buffered.
@@ -834,8 +839,8 @@ release it was built with and fails on a newer toolchain.
 
 The following items are outside the current scope:
 
-- JSON Lines input to `MaskJSON` and `MaskJSONReader` (only `jsonlogmask`
-  splits lines);
+- JSON Lines input to `MaskJSON` and `MaskJSONReader` (only the logger
+  writers split lines);
 - integer map keys;
 - optional code generation;
 - CookieNamePolicy;
@@ -878,11 +883,13 @@ fall back to the original value when masking returns an error.
   around the digits, use full redaction; ordinary phone/card separators are
   retained only when there are more than four digits.
 - Reflection inputs with invalid UTF-8 fail closed with `ErrInvalidUTF8`.
-- `jsonlogmask` masks whole lines only: a record split across two `Write`
+- `zerologmask` and `zapmask` mask whole lines only: a record split across two `Write`
   calls is replaced by the fallback line, and wrapping a level-routing or
   level-filtering destination such as zerolog's `MultiLevelWriter` or
-  `FilteredLevelWriter` loses its routing. zerolog's `binary_log` build writes
-  CBOR, and every such line is replaced.
+  `FilteredLevelWriter` loses its routing. zerolog's `binary_log` build and
+  zap's console encoder do not write JSON, and every such line is replaced.
+- zap and zerolog are masked on their encoded output, not on typed fields, so
+  a masked line is parsed and re-encoded and its keys come out sorted.
 - A single JSON object with very many members uses a full-key hash for duplicate
   lookup and `slices.SortFunc`; the per-document key cache is bounded and each
   hash chain is capped, so object width does not create an unbounded quadratic

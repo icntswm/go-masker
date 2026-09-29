@@ -1,4 +1,4 @@
-package jsonlogmask
+package jsonline
 
 import (
 	"bytes"
@@ -59,7 +59,7 @@ func (shortWriter) Write(p []byte) (int, error) { return len(p) - 1, nil }
 
 func TestWriterMasksKeys(t *testing.T) {
 	var buffer bytes.Buffer
-	w := NewWriter(&buffer, newCore(t))
+	w := New(&buffer, newCore(t), Options{Name: "jsonline"})
 	line := `{"level":"info","password":"dummy-password","token":"dummy-token","user":"alice","message":"login"}` + "\n"
 	if n, err := w.Write([]byte(line)); err != nil || n != len(line) {
 		t.Fatalf("Write: %d, %v", n, err)
@@ -77,7 +77,7 @@ func TestWriterMasksKeys(t *testing.T) {
 
 func TestWriterMasksNestedValues(t *testing.T) {
 	var buffer bytes.Buffer
-	w := NewWriter(&buffer, newCore(t))
+	w := New(&buffer, newCore(t), Options{Name: "jsonline"})
 	write(t, w, `{"level":"info","user":{"token":"dummy-token","name":"alice"},"list":[{"secret":"dummy-secret"}]}`+"\n")
 	record := decodeLine(t, buffer.String())
 	user, ok := record["user"].(map[string]any)
@@ -95,7 +95,7 @@ func TestWriterMasksNestedValues(t *testing.T) {
 
 func TestWriterMasksLinesInOneWrite(t *testing.T) {
 	counting := &countingWriter{}
-	w := NewWriter(counting, newCore(t))
+	w := New(counting, newCore(t), Options{Name: "jsonline"})
 	write(t, w, `{"level":"info","password":"dummy-one"}`+"\n"+`{"level":"info","password":"dummy-two"}`+"\n")
 	lines := strings.Split(strings.TrimSuffix(counting.buffer.String(), "\n"), "\n")
 	if len(lines) != 2 {
@@ -125,7 +125,7 @@ func TestWriterReplacesUnmaskableLines(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var buffer bytes.Buffer
-			write(t, NewWriter(&buffer, test.core), test.line+"\n")
+			write(t, New(&buffer, test.core, Options{Name: "jsonline"}), test.line+"\n")
 			if buffer.String() != `{"message":"[REDACTED]"}`+"\n" {
 				t.Fatalf("unmaskable line was not replaced: %q", buffer.String())
 			}
@@ -142,7 +142,7 @@ func TestWriterCustomMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buffer bytes.Buffer
-	w := NewWriter(&buffer, core)
+	w := New(&buffer, core, Options{Name: "jsonline"})
 	write(t, w, `{"level":"info","password":"dummy-password"}`+"\n")
 	if !strings.Contains(buffer.String(), `"password":"***"`) {
 		t.Fatalf("masked value did not use the marker: %s", buffer.String())
@@ -155,7 +155,7 @@ func TestWriterCustomMarker(t *testing.T) {
 
 func TestWriterNilCoreRedactsEverything(t *testing.T) {
 	var buffer bytes.Buffer
-	w := NewWriter(&buffer, nil)
+	w := New(&buffer, nil, Options{Name: "jsonline"})
 	write(t, w, `{"level":"info","user":"alice"}`+"\n")
 	if buffer.String() != `{"message":"[REDACTED]"}`+"\n" {
 		t.Fatalf("nil core leaked values: %s", buffer.String())
@@ -163,7 +163,7 @@ func TestWriterNilCoreRedactsEverything(t *testing.T) {
 }
 
 func TestWriterNilDestination(t *testing.T) {
-	w := NewWriter(nil, newCore(t))
+	w := New(nil, newCore(t), Options{Name: "jsonline"})
 	n, err := w.Write([]byte(`{"level":"info"}` + "\n"))
 	if err == nil || n != 0 {
 		t.Fatalf("Write to a nil destination: %d, %v", n, err)
@@ -172,7 +172,7 @@ func TestWriterNilDestination(t *testing.T) {
 
 func TestWriterPassesLinesThrough(t *testing.T) {
 	counting := &countingWriter{}
-	w := NewWriter(counting, newCore(t))
+	w := New(counting, newCore(t), Options{Name: "jsonline"})
 	if n, err := w.Write(nil); err != nil || n != 0 {
 		t.Fatalf("empty Write: %d, %v", n, err)
 	}
@@ -215,7 +215,7 @@ func TestWriterRecoversPanics(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buffer bytes.Buffer
-	write(t, NewWriter(&buffer, core), `{"level":"info","password":"dummy-secret"}`+"\n")
+	write(t, New(&buffer, core, Options{Name: "jsonline"}), `{"level":"info","password":"dummy-secret"}`+"\n")
 	if buffer.String() != `{"message":"[REDACTED]"}`+"\n" {
 		t.Fatalf("panic was not replaced by the fallback line: %s", buffer.String())
 	}
@@ -223,11 +223,11 @@ func TestWriterRecoversPanics(t *testing.T) {
 
 func TestWriterDestinationErrors(t *testing.T) {
 	boom := errors.New("dummy-error")
-	w := NewWriter(errorWriter{err: boom}, newCore(t))
+	w := New(errorWriter{err: boom}, newCore(t), Options{Name: "jsonline"})
 	if n, err := w.Write([]byte(`{"level":"info"}` + "\n")); n != 0 || !errors.Is(err, boom) {
 		t.Fatalf("destination error: %d, %v", n, err)
 	}
-	w = NewWriter(shortWriter{}, newCore(t))
+	w = New(shortWriter{}, newCore(t), Options{Name: "jsonline"})
 	if n, err := w.Write([]byte(`{"level":"info"}` + "\n")); n != 0 || !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("short write: %d, %v", n, err)
 	}
@@ -236,7 +236,7 @@ func TestWriterDestinationErrors(t *testing.T) {
 func TestWriterConcurrentWrites(t *testing.T) {
 	var mu sync.Mutex
 	var buffer bytes.Buffer
-	w := NewWriter(lockedBuffer{mu: &mu, buffer: &buffer}, newCore(t))
+	w := New(lockedBuffer{mu: &mu, buffer: &buffer}, newCore(t), Options{Name: "jsonline"})
 	var wg sync.WaitGroup
 	for g := 0; g < 8; g++ {
 		wg.Add(1)
@@ -267,7 +267,7 @@ func TestWriterConcurrentWrites(t *testing.T) {
 func TestWriterConcurrentFallbackLines(t *testing.T) {
 	var mu sync.Mutex
 	var buffer bytes.Buffer
-	w := NewWriter(lockedBuffer{mu: &mu, buffer: &buffer}, newCore(t))
+	w := New(lockedBuffer{mu: &mu, buffer: &buffer}, newCore(t), Options{Name: "jsonline"})
 	var wg sync.WaitGroup
 	for g := 0; g < 8; g++ {
 		wg.Add(1)
@@ -306,13 +306,13 @@ func (w lockedBuffer) Write(p []byte) (int, error) {
 
 func TestWriterSlogCompatibility(t *testing.T) {
 	var buffer bytes.Buffer
-	logger := slog.New(slog.NewJSONHandler(NewWriter(&buffer, newCore(t)), nil))
-	logger.Info("login", "user", "alice", "password", "hunter2")
+	logger := slog.New(slog.NewJSONHandler(New(&buffer, newCore(t), Options{Name: "jsonline"}), nil))
+	logger.Info("login", "user", "alice", "password", "dummy-hunter2")
 	record := decodeLine(t, buffer.String())
 	if record["msg"] != "login" || record["user"] != "alice" {
 		t.Fatalf("safe fields changed: %#v", record)
 	}
-	if strings.Contains(buffer.String(), "hunter2") {
+	if strings.Contains(buffer.String(), "dummy-hunter2") {
 		t.Fatalf("secret reached the log: %s", buffer.String())
 	}
 }
@@ -329,9 +329,9 @@ func (w *syncWriter) Sync() error {
 }
 
 func TestWriterSyncForwardsToDestination(t *testing.T) {
-	dst := &syncWriter{err: errors.New("disk full")}
-	w := NewWriter(dst, newCore(t))
-	syncer, ok := w.(interface{ Sync() error })
+	dst := &syncWriter{err: errors.New("dummy-disk-full")}
+	w := New(dst, newCore(t), Options{Name: "jsonline"})
+	syncer, ok := any(w).(interface{ Sync() error })
 	if !ok {
 		t.Fatal("writer has no Sync method, so zapcore.AddSync would drop syncing")
 	}
@@ -339,7 +339,7 @@ func TestWriterSyncForwardsToDestination(t *testing.T) {
 		t.Fatalf("Sync() = %v after %d calls, want the destination's error after 1", err, dst.synced)
 	}
 
-	plain := NewWriter(&bytes.Buffer{}, newCore(t)).(interface{ Sync() error })
+	plain := New(&bytes.Buffer{}, newCore(t), Options{Name: "jsonline"})
 	if err := plain.Sync(); err != nil {
 		t.Fatalf("Sync() on a destination without Sync = %v, want nil", err)
 	}
@@ -347,13 +347,13 @@ func TestWriterSyncForwardsToDestination(t *testing.T) {
 
 func TestWriterReplacesSplitRecord(t *testing.T) {
 	var buf bytes.Buffer
-	w := NewWriter(&buf, newCore(t))
-	for _, part := range []string{`{"password":"hun`, `ter2"}` + "\n"} {
+	w := New(&buf, newCore(t), Options{Name: "jsonline"})
+	for _, part := range []string{`{"password":"dummy-se`, `cret"}` + "\n"} {
 		if _, err := w.Write([]byte(part)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if strings.Contains(buf.String(), "hun") || strings.Contains(buf.String(), "ter2") {
+	if strings.Contains(buf.String(), "dummy-se") || strings.Contains(buf.String(), "cret") {
 		t.Fatalf("part of a split record reached the output: %q", buf.String())
 	}
 	want := `{"message":"[REDACTED]"}{"message":"[REDACTED]"}` + "\n"

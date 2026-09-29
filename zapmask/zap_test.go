@@ -1,22 +1,41 @@
-package jsonlogmask
+package zapmask_test
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"strings"
 	"testing"
 
 	masker "github.com/icntswm/go-masker"
+	"github.com/icntswm/go-masker/zapmask"
 )
 
-// The inputs below are lines the real loggers wrote, captured with zap
-// v1.27.0 (JSON encoder, production config without the timestamp) and zerolog
-// v1.35.1, so the module can check them without importing either logger.
-// Recapture them when a logger changes its output format.
+// The inputs below are lines the real logger wrote, captured with zap
+// v1.27.0 (JSON encoder, production config without the timestamp), so the
+// package can check them without importing the logger. Recapture them when
+// the logger changes its output format.
+
+func newCore(t *testing.T, opts ...masker.Option) *masker.Masker {
+	t.Helper()
+	core, err := masker.New(masker.DefaultPolicy(), opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return core
+}
+
+func write(t *testing.T, w io.Writer, line string) {
+	t.Helper()
+	if _, err := w.Write([]byte(line)); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func maskLines(t *testing.T, core *masker.Masker, lines ...string) string {
 	t.Helper()
 	var buffer bytes.Buffer
-	w := NewWriter(&buffer, core)
+	w := zapmask.NewWriteSyncer(&buffer, core)
 	for _, line := range lines {
 		write(t, w, line+"\n")
 	}
@@ -79,7 +98,7 @@ func TestZapLines(t *testing.T) {
 func TestZapBufferedLines(t *testing.T) {
 	// zapcore.BufferedWriteSyncer flushes several records in one Write.
 	var buffer bytes.Buffer
-	w := NewWriter(&buffer, newCore(t))
+	w := zapmask.NewWriteSyncer(&buffer, newCore(t))
 	write(t, w, `{"level":"info","msg":"b1","password":"dummy1"}`+"\n"+`{"level":"info","msg":"b2","password":"dummy2"}`+"\n")
 	want := `{"level":"info","msg":"b1","password":"[REDACTED]"}` + "\n" + `{"level":"info","msg":"b2","password":"[REDACTED]"}` + "\n"
 	if buffer.String() != want {
@@ -91,32 +110,6 @@ func TestZapConsoleLineIsReplaced(t *testing.T) {
 	got := maskLines(t, newCore(t), "2026-09-29T10:00:00.000+0300\tINFO\tconsole\t{\"password\": \"dummy\"}")
 	if got != `{"message":"[REDACTED]"}`+"\n" {
 		t.Fatalf("console line: %q", got)
-	}
-}
-
-func TestZerologLines(t *testing.T) {
-	core := newCore(t)
-	// logger.With().Str("session_id", …).Logger().Info().Str("user", "alice").Str("password", …).Msg("login")
-	got := maskLines(t, core, `{"level":"info","session_id":"dummy-session","user":"alice","password":"dummy-password","message":"login"}`)
-	want := `{"level":"info","message":"login","password":"[REDACTED]","session_id":"[REDACTED]","user":"alice"}` + "\n"
-	if got != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
-	// Interface, Dict, RawJSON and Err on one event.
-	got = maskLines(t, core, `{"level":"info","session_id":"dummy-session","creds":{"token":"dummy-t"},"req":{"authorization":"Bearer dummy"},"body":{"api_key":"dummy-k"},"error":"boom","message":"nested"}`)
-	want = `{"body":{"api_key":"[REDACTED]"},"creds":{"token":"[REDACTED]"},"error":"boom","level":"info","message":"nested","req":{"authorization":"[REDACTED]"},"session_id":"[REDACTED]"}` + "\n"
-	if got != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
-}
-
-// TestReadmeZerologOutput pins the line shown in the README's zerolog
-// section.
-func TestReadmeZerologOutput(t *testing.T) {
-	got := maskLines(t, newCore(t), `{"level":"info","user":"alice","password":"hunter2","message":"login"}`)
-	want := `{"level":"info","message":"login","password":"[REDACTED]","user":"alice"}` + "\n"
-	if got != want {
-		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
 
@@ -162,10 +155,10 @@ func TestDiagnosticKeys(t *testing.T) {
 			want: `{"Error":"x","Verbose":"y","errorCauses":[{"error":"a","errorVerbose":"a\nstack"}],"lastError":"timeout"}`,
 		},
 		{
-			name: "html characters survive re-encoding",
+			name: "html characters are escaped as MaskJSON escapes them",
 			core: newCore(t),
 			in:   `{"tokenVerbose":"dummy","note":"<a&b>"}`,
-			want: `{"note":"<a&b>","tokenVerbose":"[REDACTED]"}`,
+			want: `{"note":"\u003ca\u0026b\u003e","tokenVerbose":"[REDACTED]"}`,
 		},
 	}
 	for _, tt := range tests {
@@ -193,5 +186,67 @@ func TestDiagnosticRuleFailureFailsClosed(t *testing.T) {
 	got := maskLines(t, core, `{"msg":"x","tokenVerbose":"dummy-secret"}`)
 	if strings.Contains(got, "dummy-secret") || got != `{"message":"[REDACTED]"}`+"\n" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestDiagnosticStructureDecidedUnderItsKind(t *testing.T) {
+	arrays := masker.PolicyFunc(func(field masker.Field) (masker.Decision, error) {
+		if strings.EqualFold(field.Key, "token") && field.Kind == masker.KindArray {
+			return masker.Decision{Rule: masker.FullRule()}, nil
+		}
+		return masker.Decision{}, nil
+	})
+	core, err := masker.New(arrays)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := maskLines(t, core, `{"msg":"x","tokenCauses":[{"error":"dummy-secret"}]}`)
+	if strings.Contains(got, "dummy-secret") {
+		t.Fatalf("array policy ignored: %q", got)
+	}
+}
+
+func TestDiagnosticProbeNeverEqualsMarker(t *testing.T) {
+	core, err := masker.New(masker.DefaultPolicy(), masker.WithRedaction("diagnostic"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := maskLines(t, core, `{"msg":"x","tokenCauses":[{"error":"dummy-secret"}]}`)
+	if strings.Contains(got, "dummy-secret") {
+		t.Fatalf("marker equal to the probe kept the structure: %q", got)
+	}
+}
+
+// TestWriteSyncerHasZapWriteSyncerMethods checks that WriteSyncer has the
+// Write and Sync methods of zapcore.WriteSyncer, so it is passed to
+// zapcore.NewCore directly, without zapcore.AddSync.
+func TestWriteSyncerHasZapWriteSyncerMethods(t *testing.T) {
+	var _ interface {
+		Write([]byte) (int, error)
+		Sync() error
+	} = zapmask.WriteSyncer{}
+}
+
+type syncWriter struct {
+	bytes.Buffer
+	synced int
+	err    error
+}
+
+func (w *syncWriter) Sync() error {
+	w.synced++
+	return w.err
+}
+
+// TestWriteSyncerSyncForwardsToDestination checks that Sync flushes the
+// destination when it provides one, as zapcore.AddSync expects.
+func TestWriteSyncerSyncForwardsToDestination(t *testing.T) {
+	dst := &syncWriter{err: errors.New("dummy-disk-full")}
+	w := zapmask.NewWriteSyncer(dst, newCore(t))
+	if err := w.Sync(); !errors.Is(err, dst.err) || dst.synced != 1 {
+		t.Fatalf("Sync() = %v after %d calls, want the destination's error after 1", err, dst.synced)
+	}
+	if err := zapmask.NewWriteSyncer(&bytes.Buffer{}, newCore(t)).Sync(); err != nil {
+		t.Fatalf("Sync() on a destination without Sync = %v, want nil", err)
 	}
 }

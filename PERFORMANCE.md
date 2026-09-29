@@ -46,17 +46,17 @@ field metadata. The nested cases pay the general reflection walker.
 
 One `Info` record with four attributes, two of them sensitive. These rows were
 measured later than the table above, on the same hardware and Go, with
-`go test -run '^$' -bench 'Slog|Zerologmask' -benchmem -count=5 .`; the
+`go test -run '^$' -bench 'Slog|JSONLog' -benchmem -count=5 .`; the
 median of 5 runs is shown.
 
 | Case | ns/op | B/op | allocs/op |
 |---|---:|---:|---:|
 | `log/slog` JSON handler, no masking | 528 | 0 | 0 |
 | `log/slog` JSON handler, `slogmask.ReplaceAttr` | 1,527 | 320 | 18 |
-| `jsonlogmask` writer, one 142-byte line | 979 | 248 | 11 |
+| `zerologmask` writer, one 142-byte line | 979 | 248 | 11 |
 
-`slogmask` masks each attribute as it is written. `jsonlogmask` parses and
-re-encodes the finished line, which costs about as much as masking a
+`slogmask` masks each attribute as it is written. `zerologmask` and `zapmask` parse and
+re-encode the finished line, which costs about as much as masking a
 one-record JSON document below; the logger's own time is not included.
 
 ## JSON by document size

@@ -1,4 +1,6 @@
-package jsonlogmask
+// Package jsonline holds the JSON-line masking writer shared by zerologmask
+// and zapmask.
+package jsonline
 
 import (
 	"bytes"
@@ -13,19 +15,34 @@ import (
 	masker "github.com/icntswm/go-masker"
 )
 
-// NewWriter returns an io.Writer that masks every JSON line written to it
-// through core and writes the result to w. A logger writing one JSON object
-// per line, such as zerolog or zap's JSON encoder, produces masked lines; a
-// line that cannot be masked is replaced by {"message":"<marker>"} and never
-// passes through. A key ending in Verbose, Causes or Error is decided as its
-// base key too, see the package documentation. Each
-// Write must carry whole lines: a record split across two calls is masked as
-// two broken documents and both halves are replaced. The result is safe for
-// concurrent use when w is, because the writer keeps no mutable state. Its
-// Sync method flushes w when w has one, so zapcore.AddSync keeps syncing the
-// real destination.
-func NewWriter(w io.Writer, core *masker.Masker) io.Writer {
-	r := writer{out: w, core: core, mark: masker.DefaultRedactionMarker}
+// Options selects logger-specific behavior.
+type Options struct {
+	// Name prefixes errors, e.g. "zapmask: nil writer".
+	Name string
+	// Diagnostics also decides a key zap writes next to a field, keyVerbose,
+	// keyCauses or keyError, as its base key; see diagnosticSuffixes.
+	Diagnostics bool
+}
+
+// Writer masks JSON lines; value type, safe for concurrent use when the
+// destination is.
+type Writer struct {
+	out          io.Writer
+	core         *masker.Masker
+	mark         string
+	fallbackLine []byte
+	opts         Options
+}
+
+// New returns a Writer that masks every JSON line written to it through core
+// and writes the result to w. A line that cannot be masked is replaced by
+// {"message":"<marker>"} and never passes through. With opts.Diagnostics, a
+// key ending in Verbose, Causes or Error is decided as its base key too. Each Write must carry whole lines: a record split
+// across two calls is masked as two broken documents and both halves are
+// replaced. The result is safe for concurrent use when w is, because the
+// writer keeps no mutable state. Its Sync method flushes w when w has one.
+func New(w io.Writer, core *masker.Masker, opts Options) Writer {
+	r := Writer{out: w, core: core, mark: masker.DefaultRedactionMarker, opts: opts}
 	if core != nil {
 		if mark, err := core.MaskString("", masker.FullRule()); err == nil && mark != "" {
 			r.mark = mark
@@ -35,19 +52,14 @@ func NewWriter(w io.Writer, core *masker.Masker) io.Writer {
 	return r
 }
 
-type writer struct {
-	out          io.Writer
-	core         *masker.Masker
-	mark         string
-	fallbackLine []byte
-}
-
-func (r writer) Write(p []byte) (int, error) {
+// Write masks p and writes the result to the destination. A Write that fails
+// reports the destination's error or io.ErrShortWrite, never the masked text.
+func (r Writer) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
 	if r.out == nil {
-		return 0, errors.New("jsonlogmask: nil writer")
+		return 0, errors.New(r.opts.Name + ": nil writer")
 	}
 	masked := r.mask(p)
 	n, err := r.out.Write(masked)
@@ -64,7 +76,7 @@ func (r writer) Write(p []byte) (int, error) {
 
 // Sync flushes the destination when it provides a Sync method, as *os.File
 // does, and is a no-op otherwise.
-func (r writer) Sync() error {
+func (r Writer) Sync() error {
 	if s, ok := r.out.(interface{ Sync() error }); ok {
 		return s.Sync()
 	}
@@ -74,7 +86,7 @@ func (r writer) Sync() error {
 // mask returns the masked form of p, keeping its newline separators exactly:
 // every input line that ended in '\n' ends in '\n' in the result, and a final
 // line without one gets none.
-func (r writer) mask(p []byte) []byte {
+func (r Writer) mask(p []byte) []byte {
 	// The fast path covers a logger that writes exactly one line per Write,
 	// such as zerolog: the masked line and its newline are one buffer and
 	// the result is written without an intermediate copy.
@@ -108,7 +120,7 @@ func (r writer) mask(p []byte) []byte {
 // line masks one line without its newline separator. A blank line passes
 // through unchanged; a line the core cannot mask, including one that fails
 // while masking, is replaced by the fallback line.
-func (r writer) line(line []byte) (masked []byte) {
+func (r Writer) line(line []byte) (masked []byte) {
 	if blank(line) {
 		return line
 	}
@@ -126,7 +138,7 @@ func (r writer) line(line []byte) (masked []byte) {
 	if err != nil {
 		return r.fallback()
 	}
-	if !mentionsDiagnostic(out) {
+	if !r.opts.Diagnostics || !mentionsDiagnostic(out) {
 		return out
 	}
 	out, err = r.diagnostics(out)
@@ -160,7 +172,7 @@ func mentionsDiagnostic(line []byte) bool {
 // base key, so that zap.NamedError("token", err) does not log the token's
 // text again under tokenVerbose. A base key the policy lets through leaves
 // the diagnostic unchanged.
-func (r writer) diagnostics(line []byte) ([]byte, error) {
+func (r Writer) diagnostics(line []byte) ([]byte, error) {
 	decoder := json.NewDecoder(bytes.NewReader(line))
 	decoder.UseNumber()
 	var document any
@@ -172,9 +184,9 @@ func (r writer) diagnostics(line []byte) ([]byte, error) {
 		return line, err
 	}
 	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(document); err != nil {
+	// HTML characters stay escaped, as MaskJSON writes them, so a line reads
+	// the same whether or not it held a diagnostic key.
+	if err := json.NewEncoder(&buffer).Encode(document); err != nil {
 		return nil, err
 	}
 	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
@@ -182,7 +194,7 @@ func (r writer) diagnostics(line []byte) ([]byte, error) {
 
 // walkDiagnostics rewrites the diagnostic keys of every object in value and
 // reports whether anything changed.
-func (r writer) walkDiagnostics(value any, path string) (bool, error) {
+func (r Writer) walkDiagnostics(value any, path string) (bool, error) {
 	changed := false
 	switch value := value.(type) {
 	case map[string]any:
@@ -234,14 +246,19 @@ func diagnosticBase(key string) (string, bool) {
 
 // maskDiagnostic decides value as if it were logged under base. A string is
 // masked by base's rule, as the field itself was. Any other value, such as
-// the array under keyCauses, is kept only when base passes a probe string
-// unchanged, and becomes the marker otherwise: a partial rule cannot keep
-// part of a structure. keep is false when the policy omits base.
-func (r writer) maskDiagnostic(base, path string, value any) (masked any, keep bool, err error) {
-	field := masker.Field{Key: base, Path: path, Source: masker.SourceJSON}
+// the array under keyCauses, is decided under its own kind and kept only when
+// base passes a probe string unchanged, and becomes the marker otherwise: a
+// partial rule cannot keep part of a structure. The probe never equals the
+// marker, so a redacting rule cannot pass for one that keeps the text. keep
+// is false when the policy omits base.
+func (r Writer) maskDiagnostic(base, path string, value any) (masked any, keep bool, err error) {
+	field := masker.Field{Key: base, Path: path, Source: masker.SourceJSON, Kind: diagnosticKind(value)}
 	text, isString := value.(string)
 	if !isString {
-		text = "diagnostic"
+		text = diagnosticProbe
+		if text == r.mark {
+			text = diagnosticProbeAlt
+		}
 	}
 	result, err := r.core.MaskField(field, text)
 	if err != nil {
@@ -259,11 +276,36 @@ func (r writer) maskDiagnostic(base, path string, value any) (masked any, keep b
 	}
 }
 
+const (
+	diagnosticProbe    = "diagnostic"
+	diagnosticProbeAlt = "diagnostic value"
+)
+
+// diagnosticKind is the kind the policy sees for a decoded diagnostic value.
+func diagnosticKind(value any) masker.ValueKind {
+	switch value.(type) {
+	case nil:
+		return masker.KindNil
+	case string:
+		return masker.KindString
+	case bool:
+		return masker.KindBool
+	case json.Number:
+		return masker.KindNumber
+	case map[string]any:
+		return masker.KindObject
+	case []any:
+		return masker.KindArray
+	default:
+		return masker.KindInvalid
+	}
+}
+
 // fallback is the line written when the payload cannot be masked: the
 // redaction marker as the only field, so nothing of the original line
 // remains. The line is shared between writes, so it is clipped: appending
 // the newline copies it instead of writing into the shared array.
-func (r writer) fallback() []byte {
+func (r Writer) fallback() []byte {
 	return slices.Clip(r.fallbackLine)
 }
 

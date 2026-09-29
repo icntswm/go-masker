@@ -6,7 +6,8 @@
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev/spec/v1.0/levels)
 
 `go-masker` is a Go library for fail-closed masking of sensitive data before
-it reaches logs, diagnostics, traces, or other observability systems.
+it reaches logs, diagnostics, traces, or other observability systems. It plugs
+into `log/slog`, zap and zerolog without importing either third-party logger.
 
 One `MaskJSON` call on a payload, with the default policy and no configuration:
 
@@ -29,8 +30,8 @@ It provides one policy and rule model for:
 - struct tags;
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
-- JSON log lines from zerolog, zap or any JSON-line logger through
-  `jsonlogmask`.
+- JSON log lines from zerolog or any JSON-line logger through `zerologmask`,
+  and from zap's JSON encoder through `zapmask`.
 
 The module has no third-party dependencies, not even in its tests, and does
 not depend on an HTTP framework or logging library.
@@ -110,12 +111,10 @@ The adapters are separate packages in the same module:
 import (
 	"github.com/icntswm/go-masker/httpmask"    // HTTP headers and URLs
 	"github.com/icntswm/go-masker/slogmask"    // log/slog attributes
-	"github.com/icntswm/go-masker/jsonlogmask" // zerolog, zap and other JSON-line loggers
+	"github.com/icntswm/go-masker/zerologmask" // zerolog and other JSON-line loggers
+	"github.com/icntswm/go-masker/zapmask"     // zap's JSON encoder
 )
 ```
-
-`zerologmask`, the former name of `jsonlogmask`, still works and is
-deprecated.
 
 ## Quick start
 
@@ -261,8 +260,9 @@ m, err := masker.New(masker.DefaultPolicy(), masker.WithMaxInputBytes(2<<20))
 output, err := m.MaskJSONReader(reader)
 ```
 
-There is intentionally no writer API in the current release: a writer cannot
-retract an unsafe prefix if a later parse error is found.
+There is intentionally no writer API for a single document: a writer cannot
+retract an unsafe prefix if a later parse error is found. `zerologmask` and
+`zapmask` are writers only for complete lines, each masked as its own document.
 
 ## Struct tags
 
@@ -363,11 +363,11 @@ before `slog.SetDefault`, and third-party handlers that ignore
 
 ## zerolog
 
-The `jsonlogmask` adapter wraps the logger's writer, because zerolog serializes
+The `zerologmask` adapter wraps the logger's writer, because zerolog serializes
 its fields as they are added and its hooks cannot change what is written:
 
 ```go
-logger := zerolog.New(jsonlogmask.NewWriter(os.Stdout, m))
+logger := zerolog.New(zerologmask.NewWriter(os.Stdout, m))
 logger.Info().Str("user", "alice").Str("password", "hunter2").Msg("login")
 // {"level":"info","message":"login","password":"[REDACTED]","user":"alice"}
 ```
@@ -380,17 +380,18 @@ writer in front of `zerolog.ConsoleWriter`, so the console formats an already
 masked line. A writer that routes or filters by level, such as a
 `zerolog.MultiLevelWriter` or `zerolog.FilteredLevelWriter`, loses that when
 wrapped and receives every level: wrap each destination instead. zerolog built
-with the `binary_log` tag writes CBOR, not JSON, and every line is replaced. A line the masker cannot parse is replaced by
-`{"message":"[REDACTED]"}`, and the message text itself is not masked: keep
-secrets out of the message.
+with the `binary_log` tag writes CBOR, not JSON, and every line is replaced. A
+line the masker cannot parse is replaced by `{"message":"[REDACTED]"}`, and the
+message text itself is not masked: keep secrets out of the message.
 
 ## zap
 
-The same writer masks zap's JSON encoder when it is the core's write syncer,
-so the library does not import zap:
+`zapmask` masks the lines zap's JSON encoder writes, after encoding, so the
+library does not import zap. Its `WriteSyncer` goes to `zapcore.NewCore`
+directly:
 
 ```go
-sink := zapcore.AddSync(jsonlogmask.NewWriter(os.Stdout, m))
+sink := zapmask.NewWriteSyncer(os.Stdout, m)
 logger := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), sink, zap.InfoLevel))
 logger.Info("login", zap.String("user", "alice"), zap.String("password", "hunter2"))
 // {"level":"info","msg":"login","password":"[REDACTED]","ts":...,"user":"alice"}
@@ -459,9 +460,9 @@ of shipped code.
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
 | Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
-| Logger adapters | `slogmask` through the real `log/slog` handlers; `jsonlogmask` against lines captured from the real zerolog and zap, so the module keeps no dependency |
+| Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` and `zapmask` against lines captured from the real zerolog and zap, so the module keeps no dependency |
 | Examples | 31, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 85.3% core, 90.7% `httpmask`, 91.8% `slogmask`, 94.3% `jsonlogmask` |
+| Coverage | 85.3% core, 90.7% `httpmask`, 91.8% `slogmask`, 90.8% for the line-masking engine behind `zerologmask` and `zapmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 

@@ -67,12 +67,14 @@ that constructs long-lived maskers for attacker-controlled streams of dynamic
 struct types should account for this retention risk.
 
 The logger adapters mask structured fields, not free text. `slogmask` leaves
-the message and built-in attributes as they are, and `jsonlogmask` masks each
-JSON line by key, so a secret interpolated into the message text is logged.
-`jsonlogmask` sees only the serialized output: a line it cannot parse, or a
+the message and built-in attributes as they are, and `zerologmask` and `zapmask`
+mask each JSON line by key, so a secret interpolated into the message text is logged.
+The logger writers see only the serialized output: a line it cannot parse, or a
 record split across two writes, is replaced by the redaction marker rather
 than passed through, and a level-routing destination loses its routing when
-wrapped.
+wrapped. zap repeats a field's content under diagnostic keys (`keyVerbose`,
+`keyCauses`, `keyError`); the writer decides each of them as its base key, so
+the policy does not need to list them.
 
 URLs preserve paths by default for compatibility. Userinfo is always redacted,
 and so is the fragment unless the caller asks the HTTP adapter to keep it.

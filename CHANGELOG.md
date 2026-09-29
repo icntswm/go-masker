@@ -10,26 +10,40 @@ API may still change, and every such change is listed here.
 
 ### Added
 
-- `jsonlogmask` package: the JSON-line writer under a name that fits every
-  logger it serves. With zap it is the core's write syncer through
-  `zapcore.AddSync`, and a key zap writes next to a field, `keyVerbose`,
-  `keyCauses` or `keyError`, is also decided as its base key: before,
-  `zap.NamedError("token", err)` logged the token's `%+v` text, a
-  multi-error's parts or a panic message under a key the policy did not know.
+- `zapmask` package: `NewWriteSyncer(w, core)` masks the JSON lines zap's JSON
+  encoder writes, after encoding. It has the `Write` and `Sync` methods of
+  `zapcore.WriteSyncer`, so it goes to `zapcore.NewCore` directly. A key zap
+  writes next to a field, `keyVerbose`, `keyCauses` or `keyError`, is also
+  decided as its base key, so `zap.NamedError("token", err)` cannot log the
+  token's `%+v` text, a multi-error's parts or a panic message under a key the
+  policy does not know. A console-encoder line is replaced by the marker line.
 
-### Deprecated
+### Changed
 
-- `zerologmask`: use `jsonlogmask`. `zerologmask.NewWriter` returns the same
-  writer.
+- `zerologmask` and `zapmask` share one line-masking engine; `zerologmask`
+  keeps its API and serves zerolog and any other logger writing one JSON
+  object per line.
 
 ### Removed
 
-- The `zapmask` module, which was never tagged. Masking zap fields before
-  encoding needs zap's types and therefore a separate module with a
-  third-party dependency; `jsonlogmask` masks zap's JSON output without one.
-  The test-only `internal/zerologcompat` module is gone too: the writer is
-  checked against captured zerolog and zap lines, so the repository has a
-  single `go.mod` and no dependency.
+- The `zapmask` module listed under 0.4.0, which was never tagged: its
+  `NewCore` masked fields before encoding and needed zap as a dependency. The
+  `zapmask` import path is now a package of this module, with no dependency;
+  a build that pinned a pseudo-version of the old module must drop that
+  requirement. The test-only `internal/zerologcompat` module is gone too, so
+  the repository has a single `go.mod`.
+
+### Fixed
+
+- A struct embedded under an explicit JSON tag name is masked as one field
+  under that name, as `encoding/json` writes it, instead of having its fields
+  promoted and decided under their own keys.
+- The flat-struct fast path fails closed with `ErrInvalidUTF8` on a string
+  field holding invalid UTF-8, as the general walker does.
+- A rule failure reported by `MaskJSON` carries the path of the value it
+  failed on; two such failures at different paths are no longer merged.
+- `httpmask` documentation states that a query parameter is masked by its
+  key's rule, which may keep part of the value.
 
 ## [0.4.0] - 2026-09-29
 

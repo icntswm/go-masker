@@ -7,7 +7,7 @@ not open an issue for them, follow [SECURITY.md](SECURITY.md) instead.
 
 The project needs Go 1.23 or newer and nothing else. The module has no
 third-party dependencies and therefore no `go.sum`, including in its tests:
-`jsonlogmask` is checked against lines captured from the real zerolog and
+`zerologmask` and `zapmask` are checked against lines captured from the real zerolog and
 zap, not against the loggers themselves.
 
 ```text
@@ -58,10 +58,8 @@ counting executions instead; see the `fuzz` target in the Makefile.
 
 ## What CI runs
 
-Five jobs, each running a Makefile target, so a local run and a CI run cannot
-diverge. A merge into `main` waits for `Tests & checks` on every version,
-`Masking matrix` on 1.23.x and `stable`, `Lint`, `Vulnerability scan` and
-CodeQL.
+Five jobs, each running a Makefile target or its CI equivalent, so a local run
+and a CI run cannot diverge.
 
 | Job | What it does |
 | --- | --- |
@@ -76,8 +74,8 @@ rather than style, and `Scorecard` scores the repository rather than the code.
 Both report into the Security tab.
 
 `main` is protected: it cannot be force-pushed or deleted, history stays
-linear, and a merge waits for the tests, the matrix, the linter, the
-vulnerability scan and CodeQL. The fuzz jobs are deliberately not required -
+linear, and a merge waits for `Tests & checks` on every version, `Masking
+matrix` on 1.23.x and `stable`, `Lint`, `Vulnerability scan` and CodeQL. The fuzz jobs are deliberately not required -
 fuzzing is not deterministic, and a flaky gate teaches people to re-run rather
 than to read. Reviews are not required while the project has one maintainer,
 because nobody can approve their own pull request.
