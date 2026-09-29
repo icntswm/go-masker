@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 
 	masker "github.com/icntswm/go-masker"
 )
@@ -25,13 +26,15 @@ func NewWriter(w io.Writer, core *masker.Masker) io.Writer {
 			r.mark = mark
 		}
 	}
+	r.fallbackLine = fallbackLine(r.mark)
 	return r
 }
 
 type writer struct {
-	out  io.Writer
-	core *masker.Masker
-	mark string
+	out          io.Writer
+	core         *masker.Masker
+	mark         string
+	fallbackLine []byte
 }
 
 func (r writer) Write(p []byte) (int, error) {
@@ -77,7 +80,7 @@ func (r writer) mask(p []byte) []byte {
 		}
 		return append(r.line(line), '\n')
 	}
-	result := make([]byte, 0, len(p)+len(r.mark)+8)
+	result := make([]byte, 0, len(p))
 	for {
 		line := p
 		terminated := false
@@ -123,15 +126,19 @@ func (r writer) line(line []byte) (masked []byte) {
 
 // fallback is the line written when the payload cannot be masked: the
 // redaction marker as the only field, so nothing of the original line
-// remains.
+// remains. The line is shared between writes, so it is clipped: appending
+// the newline copies it instead of writing into the shared array.
 func (r writer) fallback() []byte {
-	mark, err := json.Marshal(r.mark)
+	return slices.Clip(r.fallbackLine)
+}
+
+// fallbackLine builds the fallback line for mark once per writer.
+func fallbackLine(mark string) []byte {
+	encoded, err := json.Marshal(mark)
 	if err != nil {
-		mark = []byte(`"[REDACTED]"`)
+		encoded = []byte(`"[REDACTED]"`)
 	}
-	line := make([]byte, 0, len(`{"message":`)+len(mark)+1)
-	line = append(line, `{"message":`...)
-	line = append(line, mark...)
+	line := append([]byte(`{"message":`), encoded...)
 	return append(line, '}')
 }
 

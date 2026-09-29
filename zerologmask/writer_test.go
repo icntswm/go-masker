@@ -264,6 +264,35 @@ func TestWriterConcurrentWrites(t *testing.T) {
 	}
 }
 
+func TestWriterConcurrentFallbackLines(t *testing.T) {
+	var mu sync.Mutex
+	var buffer bytes.Buffer
+	w := NewWriter(lockedBuffer{mu: &mu, buffer: &buffer}, newCore(t))
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				// The first input is one line, the second two lines: the fast
+				// path and the loop both append to the shared fallback line.
+				for _, input := range []string{"not json dummy\n", "not json dummy\n{\n"} {
+					if _, err := w.Write([]byte(input)); err != nil {
+						t.Error(err)
+						return
+					}
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	for _, line := range strings.Split(strings.TrimSuffix(buffer.String(), "\n"), "\n") {
+		if line != `{"message":"[REDACTED]"}` {
+			t.Fatalf("unexpected fallback line: %q", line)
+		}
+	}
+}
+
 type lockedBuffer struct {
 	mu     *sync.Mutex
 	buffer *bytes.Buffer
