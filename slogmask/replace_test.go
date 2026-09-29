@@ -413,3 +413,13 @@ func TestReplaceAttrTypedNilUnderEmptyKey(t *testing.T) {
 		t.Fatalf("a typed nil under an empty key was dropped: %s", line)
 	}
 }
+
+func TestReplaceAttrLogsUntypedNilAsNull(t *testing.T) {
+	line, record := logRecord(t, newCore(t), slog.Any("user", nil), slog.Any("password", nil))
+	if value, present := record["user"]; !present || value != nil {
+		t.Fatalf("user: want null, got %s", line)
+	}
+	if record["password"] != masker.DefaultRedactionMarker {
+		t.Fatalf("password: want the marker, got %s", line)
+	}
+}

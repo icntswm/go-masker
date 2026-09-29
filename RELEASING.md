@@ -53,7 +53,9 @@ Pushing the tag starts the provenance workflow, which attaches a source archive
 and a SLSA attestation to the release, creating a placeholder release if the
 tag arrives first. The run has to happen on the tag ref for the attestation to
 record the tag, so a release whose tag predates this workflow cannot get one:
-`v0.1.0` has no attestation for that reason.
+`v0.1.0` has no attestation for that reason. A manual run must be started from
+the tag itself (choose the tag under "Use workflow from") and fails when
+started from a branch.
 
 A consumer checks a release with:
 

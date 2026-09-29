@@ -13,9 +13,10 @@ API may still change, and every such change is listed here.
 - Reflection traversal decodes a `json.RawMessage` and masks it by its keys
   like any other map, instead of rendering it as base64: `encoding/json`
   embeds such a value as is, and base64 hid nothing that decoding could not
-  recover. A message that is not a single valid JSON value fails closed with
-  `ErrInvalidJSON`. `slogmask` logs it as masked JSON, and a nil or `null`
-  message as `null`.
+  recover. The message and its members are decided with `SourceJSON`, as
+  `MaskJSON` decides the same document. A message that is not a single valid
+  JSON value fails closed with `ErrInvalidJSON`. `slogmask` logs it as masked
+  JSON, and a nil or `null` message as `null`.
 - `EmailRule` and `IDRule` redact in full a value holding a control or format
   character or a line separator, such as an escape sequence, a newline or a
   bidirectional override: they keep part of their input verbatim, and that
@@ -40,8 +41,16 @@ API may still change, and every such change is listed here.
 - `MaskJSONReader` fails with `ErrInvalidJSON` on a reader that returns
   `(0, nil)` 100 times in a row, instead of spinning forever: such reads
   consume none of the input limit.
-- A manual run of the provenance workflow archives the tag it was given
-  instead of the branch it was started from.
+- A manual run of the provenance workflow must be started from the tag it
+  names and fails otherwise, instead of archiving the branch it was started
+  from and attesting that branch.
+- Reflection traversal ignores a JSON tag name that `encoding/json` rejects,
+  such as one with a backslash or a quote, and uses the Go field name as
+  `encoding/json` does. Before, a `Password` field whose tag name held a
+  backslash was matched under that name and logged unmasked.
+- `MaskField` and `MaskValue` decide an untyped nil through the policy instead
+  of failing with `ErrPanic`; `slog.Any("k", nil)` logs `null`.
+- The `Policy` documentation states that a policy must be deterministic.
 
 ## [0.3.0] - 2026-09-29
 

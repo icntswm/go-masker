@@ -33,8 +33,10 @@ jobs:
       digest: ${{ steps.hash.outputs.digest }}
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      # A manual run archives the tag it was given, not the branch it was
-      # started from; start it from that same tag so the attestation records it.
+      # The attestation records the ref the run started on, whatever is
+      # checked out, so a manual run must be started from the tag it names:
+      # started from a branch it would attest the branch, and slsa-verifier
+      # --source-tag would reject it.
       - name: Resolve the tag
         id: tag
         env:
@@ -44,6 +46,10 @@ jobs:
           tag="${INPUT_TAG:-${GITHUB_REF_NAME}}"
           if ! [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "not a release tag: ${tag}" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_REF}" != "refs/tags/${tag}" ]]; then
+            echo "start the run from the tag ${tag}, not from ${GITHUB_REF}" >&2
             exit 1
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"

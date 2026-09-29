@@ -324,7 +324,8 @@ For map, struct, and JSON object members, `Omit == true` removes the member.
 For array elements it preserves the array shape by producing `null`; omitting
 the root produces `nil` for reflection and JSON `null` for JSON encoding.
 
-A nil value, whether a nil interface or a nil pointer, is decided like JSON
+A nil value, whether a nil interface, including an untyped nil passed to
+`MaskField` or `MaskValue`, or a nil pointer, is decided like JSON
 `null`: the policy or a tag may omit it or apply a rule to empty text, so a
 redacting rule logs the marker, and otherwise it stays `nil`. Reflection and
 `MaskJSON` therefore agree on the same keys. In `slogmask` an omitted nil
@@ -724,7 +725,11 @@ The library never mutates input maps, slices, arrays, structs, headers, URLs,
 or nested values. Returned containers do not alias input containers.
 
 Custom Policies and Rules must be concurrency-safe. The library validates their
-outputs but cannot make arbitrary user state safe.
+outputs but cannot make arbitrary user state safe. A Policy must also be
+deterministic, returning the same Decision for the same Field: struct field
+decisions are cached, and `slogmask` and `zapmask` decide a group or namespace
+again for each member written into it, so a policy that changes its answer
+could mask one member and pass the next.
 
 ## 12. Threat model
 

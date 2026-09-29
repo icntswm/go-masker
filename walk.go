@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -64,6 +65,10 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		return m.cfg.marker, true, maskError(CodeInvalidUTF8, "mask", field.Path)
 	}
 	reflected := reflect.ValueOf(value)
+	if !reflected.IsValid() {
+		// An untyped nil is decided by the walker like any other nil.
+		return nil, false, nil
+	}
 	if textualValue(reflected) {
 		// The walker renders it through MarshalText after the decision.
 		return nil, false, nil
@@ -168,7 +173,13 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 			return w.masker.cfg.marker
 		}
 		// The decoded root stands in for this node and is not counted twice.
+		// It and its members are JSON, and are decided as MaskJSON decides
+		// them, so a policy scoped to SourceJSON sees the same document; a
+		// header value stays a header and keeps its full redaction.
 		w.nodes--
+		if field.Source != SourceHeader {
+			field.Source = SourceJSON
+		}
 		return w.walk(reflect.ValueOf(decoded), field, depth, tag)
 	}
 	// A value that renders as text is decided as a string, but MarshalText
@@ -1074,7 +1085,7 @@ func jsonFieldName(field reflect.StructField) (string, bool) {
 			return "", true
 		}
 		name, _, _ := strings.Cut(tag, ",")
-		if name != "" {
+		if validJSONTagName(name) {
 			return name, false
 		}
 	}
@@ -1087,7 +1098,26 @@ func jsonFieldTagged(field reflect.StructField) bool {
 		return false
 	}
 	name, _, _ := strings.Cut(tag, ",")
-	return name != "" && tag != "-"
+	return validJSONTagName(name) && tag != "-"
+}
+
+// validJSONTagName reports a tag name encoding/json accepts. It ignores any
+// other name and uses the Go field name, so the walker must too: otherwise a
+// tag such as `json:"safe\\name"` on a Password field would hide the key the
+// policy matches while encoding/json still writes Password.
+func validJSONTagName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		switch {
+		case strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", c):
+			// Backslash and quote are reserved, but other punctuation is fine.
+		case !unicode.IsLetter(c) && !unicode.IsDigit(c):
+			return false
+		}
+	}
+	return true
 }
 
 func structMaskTag(field reflect.StructField, tagName string) string {

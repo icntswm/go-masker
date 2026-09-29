@@ -623,6 +623,67 @@ func TestNilValuesAreDecidedLikeJSONNull(t *testing.T) {
 	}
 }
 
+func TestUntypedNilIsDecidedByThePolicy(t *testing.T) {
+	policy := Chain(PolicyFunc(func(field Field) (Decision, error) {
+		return Decision{Omit: field.Key == "drop"}, nil
+	}), DefaultPolicy())
+	m, err := New(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]any{"user": nil, "drop": nil, "password": DefaultRedactionMarker} {
+		got, err := m.MaskValue(key, nil)
+		if err != nil || got != want {
+			t.Fatalf("%s: got %#v, %v; want %#v", key, got, err, want)
+		}
+	}
+}
+
+func TestInvalidJSONTagNameFallsBackToFieldName(t *testing.T) {
+	type payload struct {
+		Password string `json:"safe\\name"` //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
+		Token    string `json:"quo\"te"` //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
+		Plain    string `json:"a-b.c"`
+	}
+	value := payload{Password: "dummy-password", Token: "dummy-token", Plain: "kept"}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(encoded) != `{"Password":"dummy-password","Token":"dummy-token","a-b.c":"kept"}` {
+		t.Fatalf("encoding/json changed its tag rules: %s", encoded)
+	}
+	result, err := newTestMasker(t).MaskAny(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"Password": DefaultRedactionMarker, "Token": DefaultRedactionMarker, "a-b.c": "kept"}
+	if !reflect.DeepEqual(result, want) {
+		t.Fatalf("got %#v, want %#v", result, want)
+	}
+}
+
+func TestRawMessageIsDecidedAsJSON(t *testing.T) {
+	jsonOnly := PolicyFunc(func(field Field) (Decision, error) {
+		if field.Key == "password" && field.Source == SourceJSON {
+			return Decision{Rule: FullRule()}, nil
+		}
+		return Decision{}, nil
+	})
+	m, err := New(jsonOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := m.MaskAny(map[string]any{"body": json.RawMessage(`{"password":"dummy-password"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := result.(map[string]any)["body"].(map[string]any)
+	if body["password"] != DefaultRedactionMarker {
+		t.Fatalf("a JSON-scoped policy missed a RawMessage member: %#v", result)
+	}
+}
+
 func TestRawMessageIsMaskedByKeys(t *testing.T) {
 	m := newTestMasker(t, WithPreserveSafeTypes())
 	nested := json.RawMessage(`[{"token":"dummy"}]`)

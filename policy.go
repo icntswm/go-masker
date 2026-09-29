@@ -65,7 +65,10 @@ type Decision struct {
 	Omit bool
 }
 
-// Policy decides how a field should be handled.
+// Policy decides how a field should be handled. Decide must be safe for
+// concurrent use and deterministic: the same Field must always get the same
+// Decision. The masker caches decisions for struct fields, and adapters decide
+// the same field more than once, such as a slog group for each of its members.
 type Policy interface {
 	Decide(Field) (Decision, error)
 }
