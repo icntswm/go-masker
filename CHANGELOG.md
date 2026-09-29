@@ -16,6 +16,12 @@ API may still change, and every such change is listed here.
   `Write` must carry whole lines; `Sync` is forwarded to w, so zap's
   `zapcore.AddSync` keeps flushing the real destination.
 
+### Changed
+
+- `MaskJSON` allocates less for small documents: the key cache no longer
+  allocates for objects with few distinct keys, and unescaped keys stay off
+  the heap. One log line drops from 27 to 11 allocations.
+
 ## [0.2.0] - 2026-09-29
 
 ### Added

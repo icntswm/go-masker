@@ -99,6 +99,30 @@ func TestJSONStreamingKeyCacheIsBounded(t *testing.T) {
 	}
 }
 
+func TestJSONStreamingKeyCacheHitsBeforeAndAfterSpill(t *testing.T) {
+	walker := &streamJSONWalker{}
+	var data []byte
+	add := func(key string) (string, bool) {
+		start := len(data)
+		data = append(data, `"`+key+`"`...)
+		return walker.streamObjectKey(data, start, len(data))
+	}
+	for count := 1; count <= 2*streamJSONKeySmallCache; count++ {
+		for index := range count {
+			key := "field_" + strconv.Itoa(index)
+			if got, ok := add(key); !ok || got != key {
+				t.Fatalf("unexpected key %q: got %q, ok=%v", key, got, ok)
+			}
+		}
+		if walker.keyCacheEntries != count {
+			t.Fatalf("repeated keys were cached twice: got %d entries, want %d", walker.keyCacheEntries, count)
+		}
+		if spilled := walker.keys != nil; spilled != (count > streamJSONKeySmallCache) {
+			t.Fatalf("unexpected spill state with %d keys: spilled=%v", count, spilled)
+		}
+	}
+}
+
 func TestSkipJSONValueStateMachine(t *testing.T) {
 	tests := []struct {
 		name  string

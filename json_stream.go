@@ -17,6 +17,16 @@ type streamJSONWalker struct {
 	path            []streamJSONPathPart
 	keys            map[uint64][]streamJSONKey
 	keyCacheEntries int
+	// smallKeys holds the first cached keys inline, so a document with few
+	// distinct keys, such as one log line, allocates no cache at all. keys
+	// takes over once it is full.
+	smallKeys      [streamJSONKeySmallCache]streamJSONSmallKey
+	smallKeysCount int
+}
+
+type streamJSONSmallKey struct {
+	bucket uint64
+	streamJSONKey
 }
 
 type streamJSONPathPart struct {
@@ -64,6 +74,7 @@ const (
 	streamObjectMemberIndexCutoff = 32
 	streamJSONKeyCacheMaxEntries  = 4096
 	streamJSONKeyCacheMaxChain    = 8
+	streamJSONKeySmallCache       = 16
 )
 
 // newStreamObjectBuffers is the single place the starting capacities live, so
@@ -801,10 +812,20 @@ func (w *streamJSONWalker) streamObjectKey(data []byte, start, end int) (string,
 	}
 
 	bucket := streamJSONKeyBucket(data[keyStart:keyEnd])
-	for _, cached := range w.keys[bucket] {
-		if cached.end-cached.start == keyEnd-keyStart &&
-			bytes.Equal(data[cached.start:cached.end], data[keyStart:keyEnd]) {
-			return cached.key, true
+	if w.keys == nil {
+		for index := range w.smallKeys[:w.smallKeysCount] {
+			cached := &w.smallKeys[index]
+			if cached.bucket == bucket && cached.end-cached.start == keyEnd-keyStart &&
+				bytes.Equal(data[cached.start:cached.end], data[keyStart:keyEnd]) {
+				return cached.key, true
+			}
+		}
+	} else {
+		for _, cached := range w.keys[bucket] {
+			if cached.end-cached.start == keyEnd-keyStart &&
+				bytes.Equal(data[cached.start:cached.end], data[keyStart:keyEnd]) {
+				return cached.key, true
+			}
 		}
 	}
 
@@ -820,14 +841,28 @@ func (w *streamJSONWalker) streamObjectKey(data []byte, start, end int) (string,
 	} else {
 		key = string(data[keyStart:keyEnd])
 	}
+	entry := streamJSONKey{key: key, start: keyStart, end: keyEnd}
+	if w.keys == nil {
+		if w.smallKeysCount < len(w.smallKeys) {
+			w.smallKeys[w.smallKeysCount] = streamJSONSmallKey{bucket: bucket, streamJSONKey: entry}
+			w.smallKeysCount++
+			w.keyCacheEntries++
+			return key, true
+		}
+		// The inline cache is full: move it into the map, which bounds
+		// every bucket's chain against colliding keys.
+		w.keys = make(map[uint64][]streamJSONKey, 2*len(w.smallKeys))
+		for _, cached := range w.smallKeys {
+			if len(w.keys[cached.bucket]) < streamJSONKeyCacheMaxChain {
+				w.keys[cached.bucket] = append(w.keys[cached.bucket], cached.streamJSONKey)
+			}
+		}
+	}
 	if w.keyCacheEntries >= streamJSONKeyCacheMaxEntries ||
 		len(w.keys[bucket]) >= streamJSONKeyCacheMaxChain {
 		return key, true
 	}
-	if w.keys == nil {
-		w.keys = make(map[uint64][]streamJSONKey, 16)
-	}
-	w.keys[bucket] = append(w.keys[bucket], streamJSONKey{key: key, start: keyStart, end: keyEnd})
+	w.keys[bucket] = append(w.keys[bucket], entry)
 	w.keyCacheEntries++
 	return key, true
 }

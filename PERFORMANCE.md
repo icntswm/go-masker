@@ -51,22 +51,25 @@ median of 5 runs is shown.
 
 | Case | ns/op | B/op | allocs/op |
 |---|---:|---:|---:|
-| `log/slog` JSON handler, no masking | 533 | 0 | 0 |
-| `log/slog` JSON handler, `slogmask.ReplaceAttr` | 1,508 | 320 | 18 |
-| `zerologmask` writer, one 142-byte line | 1,515 | 1,784 | 27 |
+| `log/slog` JSON handler, no masking | 528 | 0 | 0 |
+| `log/slog` JSON handler, `slogmask.ReplaceAttr` | 1,527 | 320 | 18 |
+| `zerologmask` writer, one 142-byte line | 979 | 248 | 11 |
 
 `slogmask` masks each attribute as it is written. `zerologmask` parses and
 re-encodes the finished line, which costs about as much as masking a
-one-record JSON document above; the logger's own time is not included.
+one-record JSON document below; the logger's own time is not included.
 
 ## JSON by document size
 
+Measured together with the logger adapters above, after the key cache stopped
+allocating for documents with few distinct keys.
+
 | Records | Time | Throughput | B/op | allocs/op |
 |---:|---:|---:|---:|---:|
-| 1 | 1.61 µs | 65 MB/s | 1,921 | 27 |
-| 100 | 67.5 µs | 126 MB/s | 17,842 | 414 |
-| 1,000 | 672 µs | 129 MB/s | 159,008 | 4,014 |
-| 10,000 | 6.82 ms | 130 MB/s | 1,574,174 | 40,014 |
+| 1 | 1.00 µs | 104 MB/s | 432 | 13 |
+| 100 | 67.3 µs | 126 MB/s | 16,324 | 400 |
+| 1,000 | 659 µs | 132 MB/s | 157,502 | 4,000 |
+| 10,000 | 6.84 ms | 130 MB/s | 1,572,853 | 40,001 |
 
 Throughput is flat from 100 records upward: cost is linear in input size.
 
