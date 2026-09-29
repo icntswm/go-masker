@@ -28,7 +28,7 @@ make test          # go test ./...
 make race          # go test -race ./...
 make bench         # root benchmarks, 5 runs each
 make bench-matrix  # 260 masking scenarios, each result checked
-make fuzz          # all five fuzz targets, 30s each
+make fuzz          # all five fuzz targets, 200,000 executions each
 make vulncheck     # govulncheck against the standard library
 ```
 
@@ -50,6 +50,10 @@ To run one fuzz target for longer than the smoke pass:
 go test -run '^$' -fuzz FuzzMaskJSON -fuzztime 5m .
 ```
 
+A time-bounded run can end with `context deadline exceeded` and no failing
+input: a race in the Go fuzzer, not a finding. The smoke pass avoids it by
+counting executions instead; see the `fuzz` target in the Makefile.
+
 ## What CI runs
 
 Five jobs, all required. Each one runs a Makefile target, so a local run and
@@ -59,7 +63,7 @@ a CI run cannot diverge:
 | --- | --- |
 | `Tests & checks` | `make vet`, `make fmt-check`, `make test`, `make race` — on Go 1.23.x through 1.27.x plus `stable` |
 | `Masking matrix` | `make bench-matrix` on the same six versions |
-| `Fuzz smoke` | `make fuzz`, all five targets at 30s each, on the same six versions |
+| `Fuzz smoke` | `make fuzz`, all five targets at 200,000 executions each, on the same six versions |
 | `Vulnerability scan` | `make vulncheck` on a recent toolchain |
 | `Lint` | `golangci-lint` on one pinned Go version |
 

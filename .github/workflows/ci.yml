@@ -122,5 +122,5 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
           cache-dependency-path: go.mod
-      - name: Five fuzz targets, 30s each
+      - name: Five fuzz targets, 200,000 executions each
         run: make fuzz

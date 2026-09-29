@@ -115,9 +115,9 @@ numbers above were not re-measured for this run.
 | 1.27.0 | OK | OK | OK | OK | OK |
 
 The fuzz column is a 20-second `FuzzMaskJSON` campaign per version; CI runs the
-full `make fuzz`, all five targets at 30 seconds each. CI also runs build, vet,
-formatting, tests, the race suite and the correctness matrix on every supported
-minor release plus `stable`.
+full `make fuzz`, all five targets at 200,000 executions each. CI also runs
+build, vet, formatting, tests, the race suite and the correctness matrix on
+every supported minor release plus `stable`.
 
 ### Output stability across Go versions
 
