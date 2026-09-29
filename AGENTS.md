@@ -23,4 +23,4 @@ lint failure; the linter version and that pin move together.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — commands, CI layout, test conventions.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — design decisions and invariants.
 - Package documentation — the API, with runnable examples for every exported
-  symbol.
+  constructor, option, rule, and adapter.
