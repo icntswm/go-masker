@@ -2,10 +2,10 @@
 
 ## How these numbers were produced
 
-| | |
+| Setting | Value |
 |---|---|
 | Hardware | Apple M3 Pro, darwin/arm64 |
-| Go | go1.23.1 (cross-version results in the last section) |
+| Go | go1.23.1 (cross-version results in [Verified Go versions](#verified-go-versions)) |
 | Date | 2026-09-29 |
 | Benchmark revision | `eb378ce` |
 | Verification revision | `2fe6986` |

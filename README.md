@@ -381,22 +381,22 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 5,458 lines of tests against 3,709 lines
+listed rather than asserted. There are 6,442 lines of tests against 4,595 lines
 of shipped code.
 
-| | |
+| Check | Evidence |
 | --- | --- |
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
-| Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
+| Security goldens | 48 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
-| Examples | 26, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 83.4% core, 90.7% `httpmask` |
+| Examples | 28, executed and output-checked, so documentation cannot drift from behavior |
+| Coverage | 84.9% core, 90.7% `httpmask`, 88.6% `slogmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 
 The version matrix earns its cost: it caught a change in `encoding/json` string
 escaping in Go 1.27 on the day `stable` moved. A separate check then confirmed
-what mattered - masking a fixed corpus under every supported release still
+what mattered — masking a fixed corpus under every supported release still
 produces byte-identical output.
 
 ## How this was built

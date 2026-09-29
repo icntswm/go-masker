@@ -607,7 +607,7 @@ masking.
 ### 9.1 Reader semantics
 
 `MaskJSONReader` reads the entire input into memory before returning. It does
-not close the reader. `MaxInputBytes` is the primary protection against
+not close the reader. `WithMaxInputBytes` is the primary protection against
 unbounded input, and the output is built before it is exposed to the caller.
 
 There is intentionally no streaming `io.Writer` API: once a writer

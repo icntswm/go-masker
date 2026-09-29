@@ -41,8 +41,8 @@ Then check the things CI cannot:
 ## Tagging
 
 ```text
-git tag -a v0.2.0 -m "v0.2.0"
-git push origin v0.2.0
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
 Create a GitHub release from the tag and paste that version's changelog
@@ -68,7 +68,7 @@ Ask the module proxy to fetch the version, which also makes it appear on
 pkg.go.dev:
 
 ```text
-GOPROXY=https://proxy.golang.org go list -m github.com/icntswm/go-masker@v0.2.0
+GOPROXY=https://proxy.golang.org go list -m github.com/icntswm/go-masker@vX.Y.Z
 ```
 
 Documentation on pkg.go.dev is generated from the tagged source, so a
@@ -90,7 +90,7 @@ If a version must not be used, say a masking bug that exposes data, add a
 `retract` directive to `go.mod`, then tag a new patch version containing it:
 
 ```text
-retract v0.2.0 // Leaks header values under SourceHeader.
+retract vX.Y.Z // Leaks header values under SourceHeader.
 ```
 
 Users on the retracted version see a warning from `go list -u -m all` and the
