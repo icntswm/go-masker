@@ -642,7 +642,7 @@ func TestUntypedNilIsDecidedByThePolicy(t *testing.T) {
 func TestInvalidJSONTagNameFallsBackToFieldName(t *testing.T) {
 	type payload struct {
 		Password string `json:"safe\\name"` //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
-		Token    string `json:"quo\"te"` //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
+		Token    string `json:"quo\"te"`    //nolint:staticcheck // SA5008: the invalid tag name is the case under test.
 		Plain    string `json:"a-b.c"`
 	}
 	value := payload{Password: "dummy-password", Token: "dummy-token", Plain: "kept"}
