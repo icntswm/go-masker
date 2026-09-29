@@ -3,7 +3,7 @@ module github.com/icntswm/go-masker/zapmask
 go 1.23
 
 require (
-	github.com/icntswm/go-masker v0.3.0
+	github.com/icntswm/go-masker v0.4.0
 	go.uber.org/zap v1.27.0
 )
 
