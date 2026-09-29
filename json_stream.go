@@ -808,11 +808,15 @@ func (w *streamJSONWalker) streamObjectKey(data []byte, start, end int) (string,
 		}
 	}
 
+	// Decoding into a separate variable keeps key off the heap: taking its
+	// address for json.Unmarshal would move every key there, escaped or not.
 	var key string
 	if escaped {
-		if err := json.Unmarshal(data[start:end], &key); err != nil {
+		var decoded string
+		if err := json.Unmarshal(data[start:end], &decoded); err != nil {
 			return "", false
 		}
+		key = decoded
 	} else {
 		key = string(data[keyStart:keyEnd])
 	}
