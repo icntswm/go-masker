@@ -7,7 +7,7 @@
 | Hardware | Apple M3 Pro, darwin/arm64 |
 | Go | go1.23.1 (cross-version results in [Verified Go versions](#verified-go-versions)) |
 | Date | 2026-09-30 |
-| Benchmark revision | `v0.5.0` |
+| Benchmark revision | `v0.5.0`; logger adapters and nested struct after `v0.5.0` |
 | Verification revision | `2fe6986` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
@@ -34,30 +34,39 @@ for capacity planning.
 | `MaskAny`, scalar | 116.1 | 16 | 1 |
 | `MaskAny`, flat struct | 345.5 | 432 | 7 |
 | `MaskAny`, wide struct | 1,708 | 1,736 | 20 |
-| `MaskAny`, nested/tagged struct | 1,630 | 1,800 | 23 |
+| `MaskAny`, nested/tagged struct | 1,476 | 1,800 | 23 |
 | `MaskAny`, nested map | 275,196 | 161,261 | 4,120 |
 | `MaskJSON`, strings holding a URL and a JSON body | 2,401 | 1,569 | 35 |
 | `httpmask.Headers`, mixed set | 2,172 | 1,072 | 35 |
 | `httpmask.URL`, query | 1,404 | 848 | 25 |
 
 Flat and wide structs use the specialized scalar-struct path with compiled
-field metadata. The nested cases pay the general reflection walker. A string
+field metadata. A struct that also holds nested values takes the same path for
+each of its scalar fields and pays the general reflection walker only for the
+rest. A string
 that no rule masks is inspected for embedded documents and secrets inside
 text, which is most of the cost of the scalar rows without a rule; the scan
 skips the inside of each word, so it stays linear and cheap on ordinary text.
 
 ## Logger adapters
 
-One `Info` record with four attributes, two of them sensitive, measured with
-the table above.
+Each row is one `Info` record, measured with the table above: four
+attributes, two of them sensitive; five safe scalars of different kinds; one
+struct; and nested groups holding a credential.
 
 | Case | ns/op | B/op | allocs/op |
 |---|---:|---:|---:|
-| `log/slog` JSON handler, no masking | 526 | 0 | 0 |
-| `log/slog` JSON handler, `slogmask.ReplaceAttr` | 1,995 | 361 | 21 |
+| `log/slog` JSON handler, no masking | 531 | 0 | 0 |
+| `log/slog` JSON handler, `slogmask.ReplaceAttr` | 1,311 | 120 | 3 |
+| `slogmask`, five safe scalars | 1,730 | 240 | 6 |
+| `slogmask`, one struct | 2,072 | 1,043 | 24 |
+| `slogmask`, nested groups | 2,347 | 810 | 13 |
 | `zerologmask` writer, one 142-byte line | 1,260 | 248 | 11 |
 
-`slogmask` masks each attribute, and the message, as it is written. `zerologmask` and `zapmask` parse and
+`slogmask` masks each attribute, and the message, as it is written. A scalar
+attribute and each enclosing group are decided without the reflection walker,
+and a number is formatted only when a rule or a detector needs its text; the
+allocations left in the scalar row are the handler's own float encoding. `zerologmask` and `zapmask` parse and
 re-encode the finished line, which costs about as much as masking a
 one-record JSON document below; the logger's own time is not included.
 

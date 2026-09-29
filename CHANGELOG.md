@@ -8,6 +8,17 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+### Changed
+
+- `slogmask` is faster: a scalar attribute and each enclosing group are
+  decided without the reflection walker, and a number is formatted only when a
+  rule or a detector needs its text. A record with nested groups takes about a
+  third of the time and an eighth of the memory it did in 0.5.0. The log
+  output is unchanged.
+- A struct that holds nested values masks its scalar fields through the same
+  compiled path as a flat struct, so a wide record with one nested struct
+  takes about a third less time.
+
 ## [0.5.0] - 2026-09-30
 
 ### Added

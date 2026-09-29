@@ -26,6 +26,9 @@ type structFieldMetadata struct {
 	tagRule  Rule
 	tagKnown bool
 	policy   staticDecision
+	// flatScalar marks a field that walkFlatScalar may take directly, even
+	// when the struct as a whole has other kinds of fields.
+	flatScalar bool
 }
 
 type staticDecision struct {
@@ -79,6 +82,7 @@ func buildStructMetadata(typ reflect.Type, tagName string, tagRules map[string]R
 			maskTag:  maskTag,
 			kind:     kindOfType(candidate.field.Type),
 		}
+		fieldMetadata.flatScalar = isFlatScalarField(candidate)
 		if maskTag != "" && maskTag != "omit" {
 			fieldMetadata.tagRule, fieldMetadata.tagKnown = tagRules[maskTag]
 		} else if maskTag == "" && isStaticKeyPolicy(policy) {
@@ -105,26 +109,35 @@ func isFlatScalarMetadata(typ reflect.Type, candidates []fieldCandidate, conflic
 		return false
 	}
 	for _, candidate := range candidates {
-		if len(candidate.index) != 1 || candidate.field.PkgPath != "" || candidate.field.Type.Kind() == reflect.Invalid {
-			return false
-		}
-		// A scalar-kind type can still render text, for example a named int
-		// with a MarshalText method. The flat fast path bypasses walk, so it
-		// must not hide such a value from the TextMarshaler conversion.
-		fieldType := candidate.field.Type
-		if fieldType.Implements(textMarshalerType) || reflect.PointerTo(fieldType).Implements(textMarshalerType) {
-			return false
-		}
-		switch candidate.field.Type.Kind() {
-		case reflect.Bool,
-			reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-			reflect.Float32, reflect.Float64, reflect.String:
-		default:
+		if !isFlatScalarField(candidate) {
 			return false
 		}
 	}
 	return true
+}
+
+// isFlatScalarField reports a directly held, exported field of a basic scalar
+// kind that walkFlatScalar decides exactly as walk would.
+func isFlatScalarField(candidate fieldCandidate) bool {
+	if len(candidate.index) != 1 || candidate.field.PkgPath != "" || candidate.field.Type.Kind() == reflect.Invalid {
+		return false
+	}
+	// A scalar-kind type can still render text, for example a named int
+	// with a MarshalText method. The flat fast path bypasses walk, so it
+	// must not hide such a value from the TextMarshaler conversion.
+	fieldType := candidate.field.Type
+	if fieldType.Implements(textMarshalerType) || reflect.PointerTo(fieldType).Implements(textMarshalerType) {
+		return false
+	}
+	switch fieldType.Kind() {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.String:
+		return true
+	default:
+		return false
+	}
 }
 
 func isStaticKeyPolicy(policy Policy) bool {

@@ -630,7 +630,15 @@ func (w *walker) structValue(value reflect.Value, field Field, depth int) any {
 			childField.Path = pathFor(field.Path, candidate.jsonName)
 		}
 		w.pushPath(candidate.jsonName)
-		childResult := w.walk(childValue, childField, depth+1, candidate.maskTag)
+		var childResult any
+		if candidate.flatScalar {
+			// A scalar field of a mixed struct takes the flat path, which uses
+			// the decision compiled for its key instead of calling the policy.
+			childField.Kind = candidate.kind
+			childResult = w.walkFlatScalar(childValue, childField, depth+1, candidate)
+		} else {
+			childResult = w.walk(childValue, childField, depth+1, candidate.maskTag)
+		}
 		w.popPath()
 		if !isOmitted(childResult) {
 			result[candidate.jsonName] = childResult
