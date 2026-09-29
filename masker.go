@@ -44,6 +44,7 @@ func New(policy Policy, opts ...Option) (*Masker, error) {
 		}
 	}
 	cfg.needPaths = policyNeedsPaths(policy)
+	cfg.markerAny = cfg.marker
 	return &Masker{policy: policy, cfg: cfg, structMetadata: &structMetadataCache{}}, nil
 }
 

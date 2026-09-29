@@ -10,6 +10,7 @@ import (
 
 type config struct {
 	marker        string
+	markerAny     any
 	maxDepth      int
 	maxNodes      int
 	maxInputBytes int64

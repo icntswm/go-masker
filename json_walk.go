@@ -23,16 +23,16 @@ func (m *Masker) maskJSONRoot(value any, root Field) (any, error) {
 
 func (w *jsonWalker) walk(value any, field Field, depth int) any {
 	if w.stop {
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	if depth > w.masker.cfg.maxDepth {
 		w.fail(CodeDepthLimit, field, depth)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	w.nodes++
 	if w.nodes > w.masker.cfg.maxNodes {
 		w.fail(CodeNodeLimit, field, depth)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	if field.Kind == KindInvalid {
 		field.Kind = jsonValueKind(value)
@@ -84,7 +84,7 @@ func (w *jsonWalker) walk(value any, field Field, depth int) any {
 		return w.walkArray(typed, field, depth)
 	default:
 		w.fail(CodeUnsupportedType, field, depth)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 }
 
@@ -116,7 +116,7 @@ func (w *jsonWalker) applyFieldDecision(value any, field Field) (bool, any) {
 			code = CodePanic
 		}
 		w.fail(code, field, 0)
-		return true, w.masker.cfg.marker
+		return true, w.masker.cfg.markerAny
 	}
 	if decision.Omit {
 		return true, omittedResult
@@ -139,7 +139,7 @@ func (w *jsonWalker) apply(rule Rule, value any, field Field) any {
 			code = CodePanic
 		}
 		addRuleError(&w.errs, code, field, rule)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	return result
 }

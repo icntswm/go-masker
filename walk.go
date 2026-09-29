@@ -20,11 +20,20 @@ type walker struct {
 	active       map[identity]struct{}
 	activeStack  []identity
 	rootPath     string
-	pathStack    []string
+	pathStack    []pathSegment
 	nodes        int
 	indirections int
 	errs         []*MaskError
 	stop         bool
+}
+
+// pathSegment names one position on the walker's path stack: a key read from
+// the value itself, or an array index, which is formatted only when a path is
+// materialized.
+type pathSegment struct {
+	key     string
+	index   int
+	isIndex bool
 }
 
 type identity struct {
@@ -62,7 +71,7 @@ func isOmitted(value any) bool {
 
 func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 	if !utf8.ValidString(field.Key) {
-		return m.cfg.marker, true, maskError(CodeInvalidUTF8, "mask", field.Path)
+		return m.cfg.markerAny, true, maskError(CodeInvalidUTF8, "mask", field.Path)
 	}
 	reflected := reflect.ValueOf(value)
 	if !reflected.IsValid() {
@@ -85,7 +94,7 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		field.Kind = kindOfReflect(reflected)
 	}
 	if reflected.Kind() == reflect.String && !utf8.ValidString(reflected.String()) {
-		return m.cfg.marker, true, maskError(CodeInvalidUTF8, "mask", field.Path)
+		return m.cfg.markerAny, true, maskError(CodeInvalidUTF8, "mask", field.Path)
 	}
 	decision, err := callPolicy(m.policy, field)
 	if err != nil {
@@ -93,7 +102,7 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		if isPanicError(err) {
 			code = CodePanic
 		}
-		return m.cfg.marker, true, aggregateErrors([]*MaskError{newFieldError(code, field, 0)})
+		return m.cfg.markerAny, true, aggregateErrors([]*MaskError{newFieldError(code, field, 0)})
 	}
 	if decision.Omit {
 		return omittedResult, true, nil
@@ -107,12 +116,12 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 			masked, changed := m.inspectString(s, field, 0, state)
 			if changed {
 				if len(errs) > 0 {
-					return m.cfg.marker, true, aggregateErrors(errs)
+					return m.cfg.markerAny, true, aggregateErrors(errs)
 				}
 				return masked, true, nil
 			}
 		}
-		return safeScalar(reflected, m.cfg.preserveSafe, m.cfg.marker), true, nil
+		return safeScalar(reflected, m.cfg.preserveSafe, m.cfg.markerAny), true, nil
 	}
 
 	rule := decision.Rule
@@ -129,27 +138,27 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 		if isPanicError(err) {
 			code = CodePanic
 		}
-		return m.cfg.marker, true, aggregateErrors([]*MaskError{ruleFieldError(code, field, rule)})
+		return m.cfg.markerAny, true, aggregateErrors([]*MaskError{ruleFieldError(code, field, rule)})
 	}
 	return result, true, nil
 }
 
 func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) any {
 	if w.stop {
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	if !utf8.ValidString(field.Key) {
 		w.fail(CodeInvalidUTF8, field, depth)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	if depth > w.masker.cfg.maxDepth {
 		w.fail(CodeDepthLimit, field, depth)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	w.nodes++
 	if w.nodes > w.masker.cfg.maxNodes {
 		w.fail(CodeNodeLimit, field, depth)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	value, nilValue := unwrapInterfaces(value)
 	if nilValue || !value.IsValid() {
@@ -164,11 +173,11 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		}
 		if !w.track(value, field, depth) {
 			w.releaseTracked(trackedStart)
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 		if !w.dereference(field, depth) {
 			w.releaseTracked(trackedStart)
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 		value = value.Elem()
 		value, nilValue = unwrapInterfaces(value)
@@ -183,7 +192,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		w.releaseTracked(trackedStart)
 		decoded, ok := w.decodeRawMessage(value, field, depth)
 		if !ok {
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 		// The decoded root stands in for this node and is not counted twice.
 		// It and its members are JSON, and are decided as MaskJSON decides
@@ -205,7 +214,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	if !textual && (value.Kind() == reflect.Map || value.Kind() == reflect.Slice) {
 		if !w.track(value, field, depth) {
 			w.releaseTracked(trackedStart)
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 	}
 
@@ -215,7 +224,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	if !textual && value.Kind() == reflect.String && !utf8.ValidString(value.String()) {
 		w.fail(CodeInvalidUTF8, field, depth)
 		w.releaseTracked(trackedStart)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	if handled, result := w.applyFieldDecision(value, field, tag, depth); handled {
 		w.releaseTracked(trackedStart)
@@ -225,7 +234,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		w.releaseTracked(trackedStart)
 		text, ok := w.renderText(value, field, depth)
 		if !ok {
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 		if w.masker.inspectable(text) {
 			if masked, changed := w.inspect(text, field, depth); changed {
@@ -256,7 +265,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		result = w.structValue(value, field, depth)
 	default:
 		w.fail(CodeUnsupportedType, field, depth)
-		result = w.masker.cfg.marker
+		result = w.masker.cfg.markerAny
 	}
 	w.releaseTracked(trackedStart)
 	return result
@@ -436,7 +445,7 @@ func (w *walker) applyFieldDecision(value reflect.Value, field Field, tag string
 		rule, known := w.masker.cfg.tagRules[tag]
 		if !known {
 			w.fail(CodeInvalidConfig, field, 0)
-			return true, w.masker.cfg.marker
+			return true, w.masker.cfg.markerAny
 		}
 		return true, w.apply(rule, value, field, depth)
 	}
@@ -448,7 +457,7 @@ func (w *walker) applyFieldDecision(value reflect.Value, field Field, tag string
 			code = CodePanic
 		}
 		w.fail(code, field, 0)
-		return true, w.masker.cfg.marker
+		return true, w.masker.cfg.markerAny
 	}
 	if decision.Omit {
 		return true, omittedResult
@@ -475,7 +484,7 @@ func (w *walker) nilValue(field Field, tag string) any {
 		tagRule, known := w.masker.cfg.tagRules[tag]
 		if !known {
 			w.fail(CodeInvalidConfig, field, 0)
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 		rule = tagRule
 	} else {
@@ -486,7 +495,7 @@ func (w *walker) nilValue(field Field, tag string) any {
 				code = CodePanic
 			}
 			w.fail(code, field, 0)
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 		if decision.Omit {
 			return omittedResult
@@ -499,6 +508,9 @@ func (w *walker) nilValue(field Field, tag string) any {
 	if field.Source == SourceHeader {
 		rule = FullRule()
 	}
+	if rule == Rule(fullRule) || rule == Rule(passwordRule) || rule == Rule(tokenRule) {
+		return w.masker.cfg.markerAny
+	}
 	result, err := applyRule(rule, RuleInput{Kind: KindNil, Redaction: w.masker.cfg.marker})
 	if err != nil {
 		code := CodeRuleFailure
@@ -506,20 +518,22 @@ func (w *walker) nilValue(field Field, tag string) any {
 			code = CodePanic
 		}
 		addRuleError(&w.errs, code, w.locate(field), rule)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	return result
 }
 
 func (w *walker) apply(rule Rule, value reflect.Value, field Field, depth int) any {
+	if rule == Rule(fullRule) || rule == Rule(passwordRule) || rule == Rule(tokenRule) {
+		// These rules redact fully and ignore the value, so it is never rendered.
+		return w.masker.cfg.markerAny
+	}
 	var text string
 	switch {
-	case rule == Rule(fullRule) || rule == Rule(passwordRule) || rule == Rule(tokenRule):
-		// These rules redact fully and ignore the value, so it is never rendered.
 	case textualValue(value):
 		rendered, ok := w.renderText(value, field, depth)
 		if !ok {
-			return w.masker.cfg.marker
+			return w.masker.cfg.markerAny
 		}
 		text = rendered
 	default:
@@ -532,7 +546,7 @@ func (w *walker) apply(rule Rule, value reflect.Value, field Field, depth int) a
 			code = CodePanic
 		}
 		addRuleError(&w.errs, code, w.locate(field), rule)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	return result
 }
@@ -540,7 +554,7 @@ func (w *walker) apply(rule Rule, value reflect.Value, field Field, depth int) a
 func (w *walker) mapValue(value reflect.Value, field Field, depth int) any {
 	if value.Type().Key().Kind() != reflect.String {
 		w.fail(CodeUnsupportedKey, field, depth)
-		return w.masker.cfg.marker
+		return w.masker.cfg.markerAny
 	}
 	result := make(map[string]any, w.resultCapacity(value.Len()))
 	iter := value.MapRange()
@@ -582,7 +596,7 @@ func (w *walker) arrayValue(value reflect.Value, field Field, depth int) any {
 		if w.masker.cfg.needPaths {
 			childField.Path = pathForIndex(field.Path, i)
 		}
-		w.pushPath(strconv.Itoa(i))
+		w.pushIndex(i)
 		childResult := w.walk(value.Index(i), childField, depth+1, "")
 		w.popPath()
 		if w.stop {
@@ -681,17 +695,17 @@ func (w *walker) walkFlatScalar(value reflect.Value, field Field, depth int, met
 	var result any
 	if depth > w.masker.cfg.maxDepth {
 		w.fail(CodeDepthLimit, field, depth)
-		result = w.masker.cfg.marker
+		result = w.masker.cfg.markerAny
 	} else {
 		w.nodes++
 		if w.nodes > w.masker.cfg.maxNodes {
 			w.fail(CodeNodeLimit, field, depth)
-			result = w.masker.cfg.marker
+			result = w.masker.cfg.markerAny
 		} else if value.Kind() == reflect.String && !utf8.ValidString(value.String()) {
 			// walk rejects invalid UTF-8 before any decision; this fast path
 			// must fail closed the same way.
 			w.fail(CodeInvalidUTF8, field, depth)
-			result = w.masker.cfg.marker
+			result = w.masker.cfg.markerAny
 		} else if handled, decisionResult := w.applyCompiledFieldDecision(value, field, metadata, depth); handled {
 			result = decisionResult
 		} else {
@@ -713,7 +727,7 @@ func (w *walker) applyCompiledFieldDecision(value reflect.Value, field Field, me
 		}
 		if !metadata.tagKnown {
 			w.fail(CodeInvalidConfig, field, 0)
-			return true, w.masker.cfg.marker
+			return true, w.masker.cfg.markerAny
 		}
 		return true, w.apply(metadata.tagRule, value, field, depth)
 	}
@@ -747,7 +761,7 @@ func (w *walker) resultCapacity(length int) int {
 }
 
 func (w *walker) safeScalar(value reflect.Value) any {
-	return safeScalar(value, w.masker.cfg.preserveSafe, w.masker.cfg.marker)
+	return safeScalar(value, w.masker.cfg.preserveSafe, w.masker.cfg.markerAny)
 }
 
 // inspect masks a document carried in a string value, joining the walker's
@@ -758,7 +772,24 @@ func (w *walker) inspect(s string, field Field, depth int) (string, bool) {
 	return w.masker.inspectString(s, w.locate(field), depth, state)
 }
 
-func safeScalar(value reflect.Value, preserveSafe bool, marker string) any {
+// boxedSafeScalar is the text of a safe scalar shared across every Masker:
+// the strings are immutable and the values boxed once, so a hot walk never
+// formats the same small scalar again.
+var (
+	boxedTrue      any = "true"
+	boxedFalse     any = "false"
+	boxedSmallInts     = func() (table [256]any) {
+		for i := range table {
+			table[i] = strconv.Itoa(i)
+		}
+		return table
+	}()
+)
+
+// safeScalar renders a scalar the walker returns by itself. With
+// preserveSafe the concrete value is kept; otherwise booleans and small
+// numbers come out as their JSON text, often from a shared boxed table.
+func safeScalar(value reflect.Value, preserveSafe bool, marker any) any {
 	if value.IsValid() && value.Type() == reflect.TypeOf(json.Number("")) {
 		return value.Interface()
 	}
@@ -769,11 +800,22 @@ func safeScalar(value reflect.Value, preserveSafe bool, marker string) any {
 	case reflect.String:
 		return value.String()
 	case reflect.Bool:
-		return strconv.FormatBool(value.Bool())
+		if value.Bool() {
+			return boxedTrue
+		}
+		return boxedFalse
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return strconv.FormatInt(value.Int(), 10)
+		n := value.Int()
+		if 0 <= n && n < int64(len(boxedSmallInts)) {
+			return boxedSmallInts[n]
+		}
+		return strconv.FormatInt(n, 10)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return strconv.FormatUint(value.Uint(), 10)
+		n := value.Uint()
+		if n < uint64(len(boxedSmallInts)) {
+			return boxedSmallInts[n]
+		}
+		return strconv.FormatUint(n, 10)
 	case reflect.Float32, reflect.Float64:
 		return strconv.FormatFloat(value.Float(), 'g', -1, value.Type().Bits())
 	default:
@@ -786,7 +828,13 @@ func safeScalar(value reflect.Value, preserveSafe bool, marker string) any {
 // walker keeps the cheap stack and materializes a path only when a policy asks
 // for one or an error has to name a location.
 func (w *walker) pushPath(segment string) {
-	w.pathStack = append(w.pathStack, segment)
+	w.pathStack = append(w.pathStack, pathSegment{key: segment})
+}
+
+// pushIndex records an array position without formatting it; the index becomes
+// text only when a path is built.
+func (w *walker) pushIndex(index int) {
+	w.pathStack = append(w.pathStack, pathSegment{index: index, isIndex: true})
 }
 
 func (w *walker) popPath() {
@@ -805,7 +853,11 @@ func (w *walker) currentPath() string {
 	builder.WriteString(path)
 	for _, segment := range w.pathStack {
 		builder.WriteByte('[')
-		builder.WriteString(segment)
+		if segment.isIndex {
+			builder.WriteString(strconv.Itoa(segment.index))
+		} else {
+			builder.WriteString(segment.key)
+		}
 		builder.WriteByte(']')
 	}
 	return builder.String()
