@@ -340,9 +340,14 @@ logger.Info("login", "user", "alice", "password", "hunter2")
 ```
 
 Attributes in groups are matched by their own key, with the group names in the
-policy path. Attributes added through `logger.With` and `WithGroup`, and the
-values returned by `LogValue`, are masked the same way. A safe scalar keeps its type, a masked one is logged as a string,
-an `error` is masked as its text, and an `Omit` decision drops the attribute.
+policy path. The policy also decides each group as an object, so a group named
+like a secret, such as `credentials`, masks every member. Attributes added
+through `logger.With` and `WithGroup`, and the values returned by `LogValue`,
+are masked the same way. A safe scalar keeps its type, a masked one is logged as a string,
+an `error` is masked as its text, and an `Omit` decision drops a top-level
+attribute. Inside a group it logs the marker instead: `log/slog` writes a
+broken line when `ReplaceAttr` drops every member of a group and another
+attribute follows it.
 The built-in time, level, message, and source attributes, and the message text
 itself, are not masked: pass secrets as attributes, never in the message.
 
@@ -418,13 +423,13 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 6,991 lines of tests against 4,882 lines
+listed rather than asserted. There are 7,169 lines of tests against 5,019 lines
 of shipped code.
 
 | Check | Evidence |
 | --- | --- |
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
-| Security goldens | 48 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
+| Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
 | Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` against the real zerolog in a separate test-only module, so the library keeps no dependency |
 | Examples | 29, executed and output-checked, so documentation cannot drift from behavior |

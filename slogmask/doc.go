@@ -3,7 +3,12 @@
 // ReplaceAttr returns a function for slog.HandlerOptions.ReplaceAttr that
 // sends every attribute through a core masker before the handler writes it.
 // Attributes inside groups are matched by their own key, and the policy sees
-// the group names in the field path, for example $[req][token].
+// the group names in the field path, for example $[req][token]. Each group is
+// also decided as an object first, because slog never passes a group itself
+// to ReplaceAttr: a masked or omitted group replaces every member with the
+// marker. An Omit decision drops a top-level attribute but logs the marker
+// inside a group, because log/slog writes a broken line when ReplaceAttr drops
+// every member of a group and another attribute follows it.
 //
 // The built-in time, level, message, and source attributes are passed through
 // unchanged, and so is the log message text: keep secrets out of the message

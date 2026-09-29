@@ -135,14 +135,14 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	}
 	value, nilValue := unwrapInterfaces(value)
 	if nilValue || !value.IsValid() {
-		return nil
+		return w.nilValue(field, tag)
 	}
 
 	trackedStart := len(w.activeStack)
 	for value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			w.releaseTracked(trackedStart)
-			return nil
+			return w.nilValue(field, tag)
 		}
 		if !w.track(value, field, depth) {
 			w.releaseTracked(trackedStart)
@@ -156,7 +156,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		value, nilValue = unwrapInterfaces(value)
 		if nilValue || !value.IsValid() {
 			w.releaseTracked(trackedStart)
-			return nil
+			return w.nilValue(field, tag)
 		}
 	}
 	if value.Type() == rawMessageType {
@@ -424,6 +424,55 @@ func (w *walker) applyFieldDecision(value reflect.Value, field Field, tag string
 		return true, w.apply(decision.Rule, value, field, depth)
 	}
 	return false, nil
+}
+
+// nilValue decides a nil value the way MaskJSON decides null: a tag or the
+// policy can omit it or apply a rule to empty text, and otherwise it stays nil.
+// The value itself is never rendered, so it needs no reflection.
+func (w *walker) nilValue(field Field, tag string) any {
+	field.Kind = KindNil
+	var rule Rule
+	if tag != "" {
+		if tag == "omit" {
+			return omittedResult
+		}
+		tagRule, known := w.masker.cfg.tagRules[tag]
+		if !known {
+			w.fail(CodeInvalidConfig, field, 0)
+			return w.masker.cfg.marker
+		}
+		rule = tagRule
+	} else {
+		decision, err := callPolicy(w.masker.policy, field)
+		if err != nil {
+			code := CodePolicyFailure
+			if isPanicError(err) {
+				code = CodePanic
+			}
+			w.fail(code, field, 0)
+			return w.masker.cfg.marker
+		}
+		if decision.Omit {
+			return omittedResult
+		}
+		rule = decision.Rule
+	}
+	if isNilRule(rule) {
+		return nil
+	}
+	if field.Source == SourceHeader {
+		rule = FullRule()
+	}
+	result, err := applyRule(rule, RuleInput{Kind: KindNil, Redaction: w.masker.cfg.marker})
+	if err != nil {
+		code := CodeRuleFailure
+		if isPanicError(err) {
+			code = CodePanic
+		}
+		addRuleError(&w.errs, code, w.locate(field), rule)
+		return w.masker.cfg.marker
+	}
+	return result
 }
 
 func (w *walker) apply(rule Rule, value reflect.Value, field Field, depth int) any {

@@ -48,6 +48,14 @@ func (r replacer) replace(groups []string, attr slog.Attr) (result slog.Attr) {
 			result = r.marker(attr.Key)
 		}
 	}()
+	defer func() {
+		// log/slog writes a broken line when ReplaceAttr drops every member
+		// of a group and another attribute follows it, so a group member is
+		// never dropped: an Omit decision there logs the marker instead.
+		if len(groups) > 0 && result.Equal(slog.Attr{}) {
+			result = r.marker(attr.Key)
+		}
+	}()
 	value := attr.Value.Resolve()
 	if value.Kind() == slog.KindGroup {
 		// The handler calls ReplaceAttr for each member of the group.
@@ -55,6 +63,9 @@ func (r replacer) replace(groups []string, attr slog.Attr) (result slog.Attr) {
 	}
 	if r.core == nil {
 		return r.marker(attr.Key)
+	}
+	if masked, decided := r.group(groups, attr.Key); decided {
+		return masked
 	}
 	field := masker.Field{Key: attr.Key, Path: path(groups, attr.Key), Source: masker.SourceMap}
 	switch value.Kind() {
@@ -66,6 +77,36 @@ func (r replacer) replace(groups []string, attr slog.Attr) (result slog.Attr) {
 	default:
 		return r.marker(attr.Key)
 	}
+}
+
+// group applies the policy to each enclosing group as an object. slog calls
+// ReplaceAttr only for the members of a group, never for the group itself, so
+// without this a sensitive group name such as credentials, whether from
+// slog.Group, WithGroup or a LogValue result, would never be decided and its
+// members would be logged under their own, harmless keys. A group the policy
+// masks or omits replaces each member with the marker.
+func (r replacer) group(groups []string, key string) (slog.Attr, bool) {
+	for index, name := range groups {
+		field := masker.Field{
+			Key:    name,
+			Path:   path(groups[:index], name),
+			Source: masker.SourceMap,
+			Kind:   masker.KindObject,
+		}
+		masked, err := r.core.MaskField(field, map[string]any{})
+		switch masked.(type) {
+		case map[string]any:
+			if err == nil {
+				continue
+			}
+		case nil:
+			if err == nil {
+				return slog.Attr{}, true
+			}
+		}
+		return r.marker(key), true
+	}
+	return slog.Attr{}, false
 }
 
 // scalar masks the text form of a value under its normalized kind. When the

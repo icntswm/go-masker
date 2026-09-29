@@ -62,9 +62,19 @@ func builtinTagRules() map[string]Rule {
 	}
 }
 
+// controlRune reports a rune that changes how a log line or terminal renders
+// rather than a character of the value: a control or format character, such
+// as an escape sequence or a bidirectional override, or a line or paragraph
+// separator. A partial rule keeps part of its input verbatim, so an input that
+// holds one is malformed and is redacted in full instead.
+func controlRune(r rune) bool {
+	return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp)
+}
+
 func maskEmail(input RuleInput) string {
 	value := input.Value
-	if !utf8.ValidString(value) || strings.IndexFunc(value, unicode.IsSpace) >= 0 {
+	if !utf8.ValidString(value) || strings.IndexFunc(value, unicode.IsSpace) >= 0 ||
+		strings.IndexFunc(value, controlRune) >= 0 {
 		return input.Redaction
 	}
 	at := strings.IndexByte(value, '@')
@@ -104,6 +114,9 @@ func maskLastFourDigits(input RuleInput) string {
 }
 
 func maskLastFourUnits(input RuleInput) string {
+	if strings.IndexFunc(input.Value, controlRune) >= 0 {
+		return input.Redaction
+	}
 	runes := []rune(input.Value)
 	if len(runes) <= 4 {
 		return input.Redaction

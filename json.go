@@ -82,7 +82,29 @@ func (m *Masker) recoverJSON(result *[]byte, err *error) {
 
 var errInputLimit = fmt.Errorf("masker: input limit")
 
+// maxEmptyReads is how many consecutive (0, nil) reads count as a stalled
+// reader, the same bound bufio uses before it reports io.ErrNoProgress.
+const maxEmptyReads = 100
+
+// progressReader fails a reader that keeps returning (0, nil). Such a read
+// consumes none of the input limit, so without this bound a hostile or broken
+// reader would spin MaskJSONReader forever despite WithMaxInputBytes.
+type progressReader struct {
+	src io.Reader
+}
+
+func (r progressReader) Read(p []byte) (int, error) {
+	for range maxEmptyReads {
+		n, err := r.src.Read(p)
+		if n > 0 || err != nil || len(p) == 0 {
+			return n, err
+		}
+	}
+	return 0, io.ErrNoProgress
+}
+
 func readLimited(src io.Reader, limit int64) ([]byte, error) {
+	src = progressReader{src: src}
 	data, err := io.ReadAll(io.LimitReader(src, limit))
 	if err != nil {
 		return nil, err

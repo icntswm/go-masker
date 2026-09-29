@@ -303,6 +303,32 @@ func TestBuiltinRulesReuseSingletons(t *testing.T) {
 	}
 }
 
+func TestPartialRulesRedactControlCharacters(t *testing.T) {
+	m := newTestMasker(t)
+	for _, tc := range []struct {
+		rule  Rule
+		value string
+		want  string
+	}{
+		{EmailRule(), "a@example.com\x1b[2J", DefaultRedactionMarker},
+		{EmailRule(), "\u202ea@example.com", DefaultRedactionMarker},
+		{EmailRule(), "a@exa\u200bmple.com", DefaultRedactionMarker},
+		{IDRule(), "SECRET\nPWN!", DefaultRedactionMarker},
+		{IDRule(), "SECRET\u2028PWN!", DefaultRedactionMarker},
+		{IDRule(), "SECRET\x00PWN!", DefaultRedactionMarker},
+		{EmailRule(), "alice@example.com", "a***@example.com"},
+		{IDRule(), "user 8891", "**** 8891"},
+	} {
+		got, err := m.MaskString(tc.value, tc.rule)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Fatalf("MaskString(%q) = %q, want %q", tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestWithStructTagKeepsBuiltinRules(t *testing.T) {
 	type payload struct {
 		Email string `redact:"email"`
@@ -555,6 +581,48 @@ func TestTextMarshalerAndBytes(t *testing.T) {
 	}
 }
 
+func TestNilValuesAreDecidedLikeJSONNull(t *testing.T) {
+	policy := Chain(PolicyFunc(func(field Field) (Decision, error) {
+		if field.Key == "drop" {
+			return Decision{Omit: true}, nil
+		}
+		return Decision{}, nil
+	}), DefaultPolicy())
+	m, err := New(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromJSON, err := m.MaskJSON([]byte(`{"drop":null,"password":null,"user":null}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fromJSON) != `{"password":"[REDACTED]","user":null}` {
+		t.Fatalf("MaskJSON: %s", fromJSON)
+	}
+
+	var missing *string
+	fromMap, err := m.MaskAny(map[string]any{"drop": nil, "password": missing, "user": nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]any{"password": DefaultRedactionMarker, "user": nil}; !reflect.DeepEqual(fromMap, want) {
+		t.Fatalf("map: got %#v, want %#v", fromMap, want)
+	}
+
+	// A tag decides a nil field too.
+	fromStruct, err := m.MaskAny(struct {
+		Drop *string `json:"drop"`
+		Note *string `json:"note" mask:"full"`
+		User *string `json:"user"`
+	}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]any{"note": DefaultRedactionMarker, "user": nil}; !reflect.DeepEqual(fromStruct, want) {
+		t.Fatalf("struct: got %#v, want %#v", fromStruct, want)
+	}
+}
+
 func TestRawMessageIsMaskedByKeys(t *testing.T) {
 	m := newTestMasker(t, WithPreserveSafeTypes())
 	nested := json.RawMessage(`[{"token":"dummy"}]`)
@@ -731,6 +799,38 @@ func TestMaskJSONReaderLimitSurvivesAPause(t *testing.T) {
 	}
 	if string(result) != "{}" {
 		t.Fatalf("unexpected JSON: %s", result)
+	}
+}
+
+// stalledReader never makes progress: every read returns (0, nil).
+type stalledReader struct{ reads int }
+
+func (r *stalledReader) Read([]byte) (int, error) {
+	r.reads++
+	return 0, nil
+}
+
+func TestMaskJSONReaderFailsAStalledReader(t *testing.T) {
+	m := newTestMasker(t, WithMaxInputBytes(1))
+	for _, src := range []io.Reader{
+		&stalledReader{},
+		// The limit is filled, then the probe for more input stalls.
+		io.MultiReader(strings.NewReader("1"), &stalledReader{}),
+	} {
+		result, err := m.MaskJSONReader(src)
+		if !errors.Is(err, ErrInvalidJSON) {
+			t.Fatalf("stalled reader was not rejected: result=%s err=%v", result, err)
+		}
+		if string(result) != `"[REDACTED]"` {
+			t.Fatalf("unexpected fallback: %s", result)
+		}
+	}
+
+	// Many pauses in a row that still end in progress are not a stall.
+	chunks := append(make([]string, maxEmptyReads-1), "{}")
+	result, err := newTestMasker(t).MaskJSONReader(&pausingReader{chunks: chunks})
+	if err != nil || string(result) != "{}" {
+		t.Fatalf("paused reader was rejected: result=%s err=%v", result, err)
 	}
 }
 

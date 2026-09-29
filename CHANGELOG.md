@@ -16,6 +16,32 @@ API may still change, and every such change is listed here.
   recover. A message that is not a single valid JSON value fails closed with
   `ErrInvalidJSON`. `slogmask` logs it as masked JSON, and a nil or `null`
   message as `null`.
+- `EmailRule` and `IDRule` redact in full a value holding a control or format
+  character or a line separator, such as an escape sequence, a newline or a
+  bidirectional override: they keep part of their input verbatim, and that
+  part could rewrite a log line or a terminal.
+
+### Fixed
+
+- `slogmask` applies the policy to every enclosing group. `log/slog` never
+  calls `ReplaceAttr` for a group itself, so a member of a group with a
+  sensitive name, such as `slog.Group("credentials", "value", …)`,
+  `WithGroup("token")` or a `LogValue` group under a sensitive key, was logged
+  under its own harmless key. A masked or omitted group now replaces each
+  member with the marker.
+- `slogmask` logs the marker for an `Omit` decision inside a group instead of
+  dropping the attribute: `log/slog` (Go 1.23 through 1.27) writes a broken
+  line, invalid JSON or a following attribute moved into the group, when
+  `ReplaceAttr` drops every member of a group. A top-level `Omit` still drops
+  the attribute.
+- Reflection traversal applies the policy and struct tags to a nil value, as
+  `MaskJSON` does for `null`: `Omit` drops the key and a redacting rule logs
+  the marker, where the key was kept as `nil` before.
+- `MaskJSONReader` fails with `ErrInvalidJSON` on a reader that returns
+  `(0, nil)` 100 times in a row, instead of spinning forever: such reads
+  consume none of the input limit.
+- A manual run of the provenance workflow archives the tag it was given
+  instead of the branch it was started from.
 
 ## [0.3.0] - 2026-09-29
 

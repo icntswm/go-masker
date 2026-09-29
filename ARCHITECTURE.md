@@ -324,6 +324,12 @@ For map, struct, and JSON object members, `Omit == true` removes the member.
 For array elements it preserves the array shape by producing `null`; omitting
 the root produces `nil` for reflection and JSON `null` for JSON encoding.
 
+A nil value, whether a nil interface or a nil pointer, is decided like JSON
+`null`: the policy or a tag may omit it or apply a rule to empty text, so a
+redacting rule logs the marker, and otherwise it stays `nil`. Reflection and
+`MaskJSON` therefore agree on the same keys. In `slogmask` an omitted nil
+attribute still logs `null`, because `MaskField` returns `nil` for both.
+
 Duplicate equal-fold bindings are accepted only when they refer to the same
 comparable Rule instance; different custom callbacks are rejected rather than
 silently resolved by declaration order.
@@ -358,10 +364,13 @@ func FullRule() Rule
 Built-in behavior:
 
 - password, token, and full rules return the configured redaction marker;
-- email preserves only a limited safe shape and fully redacts malformed input;
+- email preserves only a limited safe shape and fully redacts malformed input,
+  including input with a control or format character or a line separator;
 - phone and card rules preserve at most the last four ASCII digits and retain
   only ordinary formatting separators;
-- ID preserves at most the last four units;
+- ID preserves at most the last four units, and fully redacts input with a
+  control or format character or a line separator, since the kept units are
+  written verbatim;
 - values with four or fewer phone/card digits, or with unexpected free text,
   use full redaction;
 - partial masking operates on runes, never raw byte offsets.
@@ -626,6 +635,8 @@ masking.
 `MaskJSONReader` reads the entire input into memory before returning. It does
 not close the reader. `WithMaxInputBytes` is the primary protection against
 unbounded input, and the output is built before it is exposed to the caller.
+A read of `(0, nil)` consumes none of that limit, so 100 of them in a row fail
+the call with `ErrInvalidJSON` rather than let a stalled reader spin forever.
 
 There is intentionally no streaming `io.Writer` API for a single document:
 once a writer has received a prefix, a later parse error cannot retract a
@@ -637,7 +648,14 @@ fallback line rather than buffered.
 ### 9.2 Known JSON limitations
 
 Duplicate object keys follow `encoding/json` behavior: the last value wins.
-This is a documented limitation and a threat-model item.
+This is a documented limitation and a threat-model item. Every member is still
+masked, including one a later duplicate overwrites, so a masking error in an
+overwritten member fails the whole document even though its value would not
+reach the output. This is deliberate: deciding which duplicate survives before
+masking would need a second pass, and failing closed costs only a rejected
+document whose keys RFC 8259 says should be unique. A
+`json.RawMessage` walked through reflection is decoded first, so only its last
+value is masked.
 
 All JSON documents use the streaming walker. The input itself is still held in
 memory by `MaskJSON` and `MaskJSONReader`.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -90,9 +91,57 @@ func TestReplaceAttrPassesGroupPath(t *testing.T) {
 	if !ok || group["token"] == "dummy-token" {
 		t.Fatalf("grouped token was not masked: %#v", record["req"])
 	}
-	if len(paths) == 0 || paths[0] != "$[req][token]" {
+	// The group is decided as an object before its member.
+	if !slices.Equal(paths, []string{"$[req]", "$[req][token]"}) {
 		t.Fatalf("unexpected policy paths: %q", paths)
 	}
+}
+
+func TestReplaceAttrMasksSensitiveGroups(t *testing.T) {
+	line, _ := logRecord(t, newCore(t),
+		slog.Group("credentials", slog.String("value", "dummy-group")),
+		slog.Any("secret", groupValuer{}),
+		slog.Group("req", slog.Group("password", slog.Int("n", 7))),
+	)
+	for _, want := range []string{
+		`"credentials":{"value":"[REDACTED]"}`,
+		`"secret":{"value":"[REDACTED]"}`,
+		`"req":{"password":{"n":"[REDACTED]"}}`,
+	} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("sensitive group was not masked, want %s in %s", want, line)
+		}
+	}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{ReplaceAttr: ReplaceAttr(newCore(t))}))
+	logger.WithGroup("token").Info("m", "value", "dummy-with-group")
+	if strings.Contains(buf.String(), "dummy-") {
+		t.Fatalf("WithGroup under a sensitive name bypassed masking: %s", buf.String())
+	}
+
+	omit := masker.PolicyFunc(func(field masker.Field) (masker.Decision, error) {
+		return masker.Decision{Omit: field.Key == "internal" || field.Key == "trace"}, nil
+	})
+	// log/slog writes a broken line when every member of a group is dropped
+	// and another attribute follows it, so an omitted group, or member,
+	// becomes the marker; logRecord fails on a line that is not valid JSON.
+	_, record := logRecord(t, newCore(t, omit),
+		slog.Group("internal", slog.String("a", "dummy-internal")),
+		slog.Group("req", slog.String("trace", "dummy-trace")),
+		slog.String("b", "kept"),
+	)
+	internal, _ := record["internal"].(map[string]any)
+	req, _ := record["req"].(map[string]any)
+	if internal["a"] != masker.DefaultRedactionMarker || req["trace"] != masker.DefaultRedactionMarker || record["b"] != "kept" {
+		t.Fatalf("omitted group members: %#v", record)
+	}
+}
+
+type groupValuer struct{}
+
+func (groupValuer) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("value", "dummy-valuer"))
 }
 
 func TestReplaceAttrOmitAndFailure(t *testing.T) {
