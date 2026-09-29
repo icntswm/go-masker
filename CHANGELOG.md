@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
-## [Unreleased]
+## [0.4.0] - 2026-09-29
 
 ### Added
 
@@ -14,7 +14,8 @@ API may still change, and every such change is listed here.
   separately): `NewCore(inner, core)` wraps a zap core and masks context and
   call-site fields before any encoder sees them. A `zap.Namespace` is decided
   by the policy as an object, like a group in `slogmask`, and sampling and
-  `Tee` levels of the inner core keep working.
+  `Tee` levels of the inner core keep working. Its first release,
+  `zapmask/v0.1.0`, requires this release.
 
 ### Changed
 
@@ -232,6 +233,7 @@ First tagged release.
 - Settled the public module path `github.com/icntswm/go-masker` and added
   release, contribution and agent-facing documentation.
 
+[0.4.0]: https://github.com/icntswm/go-masker/releases/tag/v0.4.0
 [0.3.0]: https://github.com/icntswm/go-masker/releases/tag/v0.3.0
 [0.2.0]: https://github.com/icntswm/go-masker/releases/tag/v0.2.0
 [0.1.1]: https://github.com/icntswm/go-masker/releases/tag/v0.1.1
