@@ -66,25 +66,25 @@ values and field metadata remain reachable for that `Masker`'s lifetime. Code
 that constructs long-lived maskers for attacker-controlled streams of dynamic
 struct types should account for this retention risk.
 
-The logger adapters mask structured fields by key. `slogmask` leaves the
-message and built-in attributes as they are, so a secret interpolated into an
-slog message is logged. `zerologmask` and `zapmask` mask each JSON line by key
-and search the message like any other string with the text detectors described
-below, which catch only secrets with a key or a recognizable shape.
-The logger writers see only the serialized output: a line it cannot parse, or a
+The logger adapters mask structured fields by key and search the log message
+like any other string with the text detectors described below, which catch
+only secrets with a key or a recognizable shape. `slogmask` leaves the time,
+level, and source attributes as they are; `zerologmask` and `zapmask` mask each
+JSON line as a whole.
+The logger writers see only the serialized output: a line they cannot parse, or a
 record split across two writes, is replaced by the redaction marker rather
 than passed through, and a level-routing destination loses its routing when
 wrapped. zap repeats a field's content under diagnostic keys (`keyVerbose`,
 `keyCauses`, `keyError`); the writer decides each of them as its base key, so
 the policy does not need to list them.
 
-A secret in a string whose key the policy does not know is masked only when
-the whole string is a document the masker recognizes: an absolute URL, one
-JSON object or array, or a strict `key=value&…` form. Recognition is strict on
+A string whose key the policy does not know is first tried as a whole
+document: an absolute URL, one JSON object or array, or a strict
+`key=value&…` form, masked by the keys inside it. Recognition is strict on
 purpose, so prose, a URL inside a sentence, a relative URL or a `key: value`
-header line is passed through as it is. Inspection shares the depth, node and
-input limits of the value around it, so nesting documents in strings cannot
-exceed them. `WithoutEmbeddedDocuments()` turns it off; a caller who does so
+header line is not a document; such text goes to the text detectors below.
+Inspection shares the depth, node and input limits of the value around it, so
+nesting documents in strings cannot exceed them. `WithoutEmbeddedDocuments()` turns it off; a caller who does so
 accepts that a body or callback URL logged as a string is written unmasked.
 
 A string that is not a whole document is searched by text detectors: pairs
@@ -102,7 +102,7 @@ content.
 
 URLs preserve paths by default for compatibility. Userinfo is always redacted,
 and so is the fragment unless the caller asks the HTTP adapter to keep it.
-Cookies and Set-Cookie headers are fully redacted in the MVP.
+Cookie and Set-Cookie headers are always fully redacted.
 
 `WithPreserveSafeTypes` retains safe primitive types but does not preserve
 struct types. Source strings may remain live while an operation is running;

@@ -17,7 +17,9 @@ import (
 // Scalar values keep their type when the policy leaves them unchanged, so a
 // safe number is still logged as a number; a masked value is logged as a
 // string. An error value is masked as its Error text. An Omit decision drops
-// the attribute. A nil core redacts every attribute except the built-in ones.
+// the attribute. The message is masked like a string attribute named msg, so
+// the text detectors search it; the time, level, and source attributes are
+// passed through. A nil core redacts everything else, the message included.
 func ReplaceAttr(core *masker.Masker) func(groups []string, attr slog.Attr) slog.Attr {
 	r := replacer{core: core, mark: masker.DefaultRedactionMarker}
 	if core != nil {
@@ -199,15 +201,14 @@ func plain(masked any) any {
 
 func (r replacer) marker(key string) slog.Attr { return slog.String(key, r.mark) }
 
-// builtinAttr reports a record's own time, level, message, or source
-// attribute. The value type is checked as well as the key, so a caller
-// attribute that merely reuses one of these keys is still masked.
+// builtinAttr reports a record's own time, level, or source attribute. The
+// value type is checked as well as the key, so a caller attribute that merely
+// reuses one of these keys is still masked. The message is not listed: it is
+// masked like any string attribute.
 func builtinAttr(attr slog.Attr) bool {
 	switch attr.Key {
 	case slog.TimeKey:
 		return attr.Value.Kind() == slog.KindTime
-	case slog.MessageKey:
-		return attr.Value.Kind() == slog.KindString
 	case slog.LevelKey:
 		_, ok := attr.Value.Any().(slog.Level)
 		return attr.Value.Kind() == slog.KindAny && ok

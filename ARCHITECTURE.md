@@ -71,6 +71,7 @@ go-masker/
 ├── doc.go
 ├── embedded.go
 ├── text.go
+├── text_isolation.go
 ├── errors.go
 ├── json.go
 ├── json_encode.go
@@ -85,7 +86,7 @@ go-masker/
 ├── struct_metadata.go
 ├── walk.go
 ├── .github/
-│   ├── workflows/ci.yml
+│   ├── workflows/            # ci, codeql, provenance, scorecard
 │   ├── dependabot.yml
 │   └── ISSUE_TEMPLATE/
 ├── httpmask/
@@ -820,8 +821,7 @@ and pass the next.
 - memory retention of source strings;
 - the inability to prove arbitrary custom Rule semantic safety;
 - secrets in free text that have neither a key nor a recognizable shape,
-  which the text detectors cannot find, and slog message text, which
-  `slogmask` does not inspect.
+  which the text detectors cannot find.
 
 ## 13. Testing and benchmarking
 
@@ -860,13 +860,15 @@ Tests cover:
 
 ### 13.3 Fuzzing
 
-Fuzz targets include:
+The six fuzz targets are:
 
 - `FuzzMaskJSON` for arbitrary JSON bytes;
 - `FuzzMaskString` for arbitrary Unicode strings and built-in rules;
 - `FuzzKeyPolicyCaseFold` for case-insensitive policy matching;
 - `FuzzJSONWalkerMatchesReflection` for JSON/reflection parity;
-- `FuzzURLString` for malformed URLs and query escaping.
+- `FuzzURLString` for malformed URLs and query escaping;
+- `FuzzCandidateMatchesFind` for the text detectors: well-formed spans and
+  pairs, and `detect.Candidate` agreeing with `detect.Find`.
 
 Custom Rule and Policy panic paths are covered by unit tests rather than fuzz
 targets.

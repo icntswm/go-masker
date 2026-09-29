@@ -21,6 +21,6 @@ func ExampleReplaceAttr() {
 		return mask(groups, attr)
 	}}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, options))
-	logger.Info("login", slog.String("user", "alice"), slog.String("password", "hunter2"), slog.Int("attempt", 2))
-	// Output: {"level":"INFO","msg":"login","user":"alice","password":"[REDACTED]","attempt":2}
+	logger.Info("login as alice, password=hunter2", slog.String("user", "alice"), slog.String("password", "hunter2"), slog.Int("attempt", 2))
+	// Output: {"level":"INFO","msg":"login as alice, password=[REDACTED]","user":"alice","password":"[REDACTED]","attempt":2}
 }

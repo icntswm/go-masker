@@ -431,8 +431,10 @@ an `error` is masked as its text, and an `Omit` decision drops a top-level
 attribute. Inside a group it logs the marker instead: `log/slog` writes a
 broken line when `ReplaceAttr` drops every member of a group and another
 attribute follows it.
-The built-in time, level, message, and source attributes, and the message text
-itself, are not masked: pass secrets as attributes, never in the message.
+The message is masked as a string attribute named `msg`, so it is searched as
+described in [Secrets inside text](#secrets-inside-text); that is a safety net,
+so still pass secrets as attributes rather than in the message. The built-in
+time, level, and source attributes are not masked.
 
 Masking happens only in a handler that calls `ReplaceAttr`. The standard
 `TextHandler` and `JSONHandler` do; the default handler behind `slog.Info`
@@ -533,17 +535,17 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 7,315 lines of tests against 5,139 lines
+listed rather than asserted. There are 9,220 lines of tests against 6,731 lines
 of shipped code.
 
 | Check | Evidence |
 | --- | --- |
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
 | Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
-| Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
+| Fuzzing | 6 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs, text detectors |
 | Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` and `zapmask` against lines captured from the real zerolog and zap, so the module keeps no dependency |
-| Examples | 31, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 85.3% core, 90.7% `httpmask`, 91.8% `slogmask`, 90.8% for the line-masking engine behind `zerologmask` and `zapmask` |
+| Examples | 37, executed and output-checked, so documentation cannot drift from behavior |
+| Coverage | 86.4% core, 88.5% `httpmask`, 91.7% `slogmask`, 96.3% for the text detectors, 90.8% for the line-masking engine behind `zerologmask` and `zapmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 
@@ -598,7 +600,8 @@ the archive instead.
 ## Documentation map
 
 - [package documentation](https://pkg.go.dev/github.com/icntswm/go-masker) —
-  API reference and runnable examples for every exported symbol;
+  API reference and runnable examples for every exported constructor,
+  option, rule, and adapter;
 - [ARCHITECTURE.md](ARCHITECTURE.md) — implementation architecture and design
   decisions;
 - [PERFORMANCE.md](PERFORMANCE.md) — benchmark methodology and references;

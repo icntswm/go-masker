@@ -10,12 +10,14 @@
 // inside a group, because log/slog writes a broken line when ReplaceAttr drops
 // every member of a group and another attribute follows it.
 //
-// The built-in time, level, message, and source attributes are passed through
-// unchanged, and so is the log message text: keep secrets out of the message
-// and pass them as attributes. A caller attribute that reuses one of these
-// keys is masked unless its value has the built-in type: a top-level string
-// attribute named msg cannot be told apart from the message. A masking
-// failure writes the redaction marker, never the original value.
+// The message is masked like a string attribute named msg: the policy decides
+// it by that key, and the embedded-document and text inspection of the core
+// searches it, so a password=... pair or a bearer token interpolated into the
+// message is replaced. That is a safety net, so still pass secrets as
+// attributes. The built-in time, level, and source attributes are passed
+// through unchanged; a caller attribute that reuses one of these keys is
+// masked unless its value has the built-in type. A masking failure writes the
+// redaction marker, never the original value.
 //
 // A json.RawMessage attribute is logged as masked JSON, not as base64.
 //

@@ -22,8 +22,10 @@ API may still change, and every such change is listed here.
   whose key the policy judges under the new `SourceText`, and for secrets
   recognizable by shape: the credential after `Bearer` or `Basic`, PEM private
   key bodies, JWTs, provider tokens with a documented prefix and URL userinfo.
-  Only the secret is replaced. The message of a `zerologmask` or `zapmask`
-  line is searched too. `WithCardNumberDetection()` and
+  Only the secret is replaced. The log message is searched too, in
+  `slogmask`, `zerologmask` and `zapmask`: `slogmask` now masks the message
+  as a string attribute named `msg` instead of passing it through, and with a
+  nil core it logs the marker in its place. `WithCardNumberDetection()` and
   `WithAWSKeyIDDetection()` add opt-in detectors; `WithoutTextDetectors()`
   turns the detectors off and `WithoutValueInspection()` turns off both
   detectors and embedded documents.

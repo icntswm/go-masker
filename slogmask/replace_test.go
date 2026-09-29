@@ -91,8 +91,9 @@ func TestReplaceAttrPassesGroupPath(t *testing.T) {
 	if !ok || group["token"] == "dummy-token" {
 		t.Fatalf("grouped token was not masked: %#v", record["req"])
 	}
-	// The group is decided as an object before its member.
-	if !slices.Equal(paths, []string{"$[req]", "$[req][token]"}) {
+	// The message is decided first, and the group as an object before its
+	// member.
+	if !slices.Equal(paths, []string{"$[msg]", "$[req]", "$[req][token]"}) {
 		t.Fatalf("unexpected policy paths: %q", paths)
 	}
 }
@@ -177,8 +178,47 @@ func TestReplaceAttrNilCoreRedactsEverything(t *testing.T) {
 	if record["name"] != masker.DefaultRedactionMarker || record["count"] != masker.DefaultRedactionMarker {
 		t.Fatalf("nil core leaked values: %#v", record)
 	}
+	if record["msg"] != masker.DefaultRedactionMarker {
+		t.Fatalf("nil core logged the message: %#v", record["msg"])
+	}
+}
+
+func TestReplaceAttrSearchesMessage(t *testing.T) {
+	for _, handler := range []struct {
+		name string
+		new  func(*bytes.Buffer, *slog.HandlerOptions) slog.Handler
+	}{
+		{"json", func(b *bytes.Buffer, o *slog.HandlerOptions) slog.Handler { return slog.NewJSONHandler(b, o) }},
+		{"text", func(b *bytes.Buffer, o *slog.HandlerOptions) slog.Handler { return slog.NewTextHandler(b, o) }},
+	} {
+		t.Run(handler.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			logger := slog.New(handler.new(&buffer, &slog.HandlerOptions{ReplaceAttr: ReplaceAttr(newCore(t))}))
+			logger.Info("login failed: password=dummy-password user=alice")
+			line := buffer.String()
+			if strings.Contains(line, "dummy-password") {
+				t.Fatalf("a secret in the message reached the log: %s", line)
+			}
+			if !strings.Contains(line, "login failed: password=[REDACTED] user=alice") {
+				t.Fatalf("message was not masked in place: %s", line)
+			}
+		})
+	}
+
+	_, record := logRecord(t, newCore(t))
 	if record["msg"] != "request handled" {
-		t.Fatalf("message changed: %#v", record["msg"])
+		t.Fatalf("a message without secrets changed: %#v", record["msg"])
+	}
+
+	omitMessage := masker.PolicyFunc(func(field masker.Field) (masker.Decision, error) {
+		if field.Path == "$[msg]" {
+			return masker.Decision{Omit: true}, nil
+		}
+		return masker.Decision{}, nil
+	})
+	line, record := logRecord(t, newCore(t, omitMessage))
+	if _, present := record["msg"]; present || record["level"] != "INFO" {
+		t.Fatalf("an omitted message was logged: %s", line)
 	}
 }
 
