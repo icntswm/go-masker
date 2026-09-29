@@ -738,6 +738,10 @@ func FuzzJSONWalkerMatchesReflection(f *testing.F) {
 		`{"value":"first","value":"second"}`,
 		`{"fail":"value","safe":1}`,
 		`[true,12345678901234567890,{"secret":"value"}]`,
+		`{"url":"https://user:dummy@h/cb?token=dummy"}`,
+		`{"body":"{\"secret\":\"dummy\"}"}`,
+		`{"form":"user=a&secret=dummy"}`,
+		`{"secret":"{\"inner\":\"{\\\"token\\\":\\\"dummy\\\"}\"}"}`,
 	}
 	for _, seed := range seeds {
 		f.Add([]byte(seed))

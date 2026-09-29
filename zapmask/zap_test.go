@@ -250,3 +250,11 @@ func TestWriteSyncerSyncForwardsToDestination(t *testing.T) {
 		t.Fatalf("Sync() on a destination without Sync = %v, want nil", err)
 	}
 }
+
+func TestZapEmbeddedURL(t *testing.T) {
+	got := maskLines(t, newCore(t), `{"level":"info","msg":"x","url":"https://u:dummy@h/?token=dummy"}`)
+	want := `{"level":"info","msg":"x","url":"https://%5BREDACTED%5D@h/?token=%5BREDACTED%5D"}`
+	if got != want+"\n" {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}

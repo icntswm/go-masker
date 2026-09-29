@@ -399,3 +399,55 @@ func Example_errorCategories() {
 	fmt.Println(errors.Is(err, masker.ErrInvalidJSON), errors.As(err, &detail), detail.Code, detail.Operation)
 	// Output: true true invalid_json mask_json
 }
+
+func ExampleMasker_MaskValue_embeddedDocuments() {
+	m, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		panic(err)
+	}
+
+	// A callback URL and a request body carried as plain strings are masked
+	// as the documents they hold: the field names never appear in a
+	// sensitive-key list, but the values speak for themselves.
+	callback, err := m.MaskValue("note", "https://u:dummy@h/cb?token=dummy-token")
+	if err != nil {
+		panic(err)
+	}
+	body, err := m.MaskValue("note", `{"password":"dummy-secret"}`)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(callback)
+	fmt.Println(body)
+	// Output:
+	// https://%5BREDACTED%5D@h/cb?token=%5BREDACTED%5D
+	// {"password":"[REDACTED]"}
+}
+
+func ExampleWithoutEmbeddedDocuments() {
+	value := "https://u:dummy@h/cb?token=dummy-token"
+
+	m, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		panic(err)
+	}
+	masked, err := m.MaskValue("note", value)
+	if err != nil {
+		panic(err)
+	}
+
+	plain, err := masker.New(masker.DefaultPolicy(), masker.WithoutEmbeddedDocuments())
+	if err != nil {
+		panic(err)
+	}
+	leaked, err := plain.MaskValue("note", value)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(masked)
+	fmt.Println(leaked)
+	// Output:
+	// https://%5BREDACTED%5D@h/cb?token=%5BREDACTED%5D
+	// https://u:dummy@h/cb?token=dummy-token
+}

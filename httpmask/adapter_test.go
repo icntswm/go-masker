@@ -473,3 +473,37 @@ func TestMaskQueryDoesNotAmplifySeparators(t *testing.T) {
 		t.Fatalf("query masking allocated %d bytes for %d bytes of separators", allocated, len(raw))
 	}
 }
+
+// TestEmbeddedURLsInHeadersAndQueries checks that a URL carried in a harmless
+// header value or query parameter is masked as the URL it is: userinfo is
+// replaced and a nested redirect_uri keeps the login out of the log.
+func TestEmbeddedURLsInHeadersAndQueriesAreMasked(t *testing.T) {
+	core, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := New(core)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	headers, err := adapter.Headers(http.Header{"Referer": {"https://u:dummy@h/p"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := headers.Get("Referer"); got != "https://%5BREDACTED%5D@h/p" {
+		t.Fatalf("referer: %q", got)
+	}
+
+	raw, err := url.Parse("https://host/callback?redirect_uri=https%3A%2F%2Fu%3Adummy%40h%2F")
+	if err != nil {
+		t.Fatal(err)
+	}
+	masked, err := adapter.URL(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := masked.Query().Get("redirect_uri"); got != "https://%5BREDACTED%5D@h/" {
+		t.Fatalf("redirect_uri: %q", got)
+	}
+}

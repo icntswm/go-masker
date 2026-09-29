@@ -36,6 +36,10 @@ func FuzzMaskJSON(f *testing.F) {
 		`null`,
 		`123456789012345678901234567890`,
 		string([]byte{0xff, 0xfe}),
+		`{"url":"https://user:dummy@example.com/cb?token=dummy-secret#access_token=dummy"}`,
+		`{"body":"{\"password\":\"dummy-secret\"}"}`,
+		`{"form":"user=a&password=dummy-secret"}`,
+		`{"broken":"https://h/?a=1;b=2"}`,
 	}
 	for _, seed := range seeds {
 		f.Add([]byte(seed))

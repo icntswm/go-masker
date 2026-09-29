@@ -423,3 +423,13 @@ func TestReplaceAttrLogsUntypedNilAsNull(t *testing.T) {
 		t.Fatalf("password: want the marker, got %s", line)
 	}
 }
+
+func TestReplaceAttrMasksEmbeddedURL(t *testing.T) {
+	line, record := logRecord(t, newCore(t), slog.String("url", "https://u:dummy@h/cb?token=dummy-token"))
+	if strings.Contains(line, "dummy") {
+		t.Fatalf("the URL secrets reached the log: %s", line)
+	}
+	if record["url"] != "https://%5BREDACTED%5D@h/cb?token=%5BREDACTED%5D" {
+		t.Fatalf("url: %#v", record["url"])
+	}
+}

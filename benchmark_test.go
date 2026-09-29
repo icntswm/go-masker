@@ -561,3 +561,9 @@ func validateBenchmarkValue(b *testing.B, err error) {
 		b.Fatal("nil benchmark output")
 	}
 }
+
+const embeddedJSONDoc = `{"level":"info","message":"login","url":"https://u:dummy@h/cb?token=dummy-token","body":"{\"password\":\"dummy-secret\"}"}`
+
+func BenchmarkMaskJSONEmbedded(b *testing.B) {
+	benchmarkMaskJSON(b, []byte(embeddedJSONDoc))
+}
