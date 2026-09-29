@@ -1,8 +1,10 @@
 package masker_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,6 +14,8 @@ import (
 
 	"github.com/icntswm/go-masker"
 	"github.com/icntswm/go-masker/httpmask"
+	"github.com/icntswm/go-masker/slogmask"
+	"github.com/icntswm/go-masker/zerologmask"
 )
 
 var (
@@ -482,6 +486,60 @@ func BenchmarkAdapterURLQuery(b *testing.B) {
 	}
 	b.StopTimer()
 	validateBenchmarkValue(b, operationErr)
+}
+
+// --- logger adapters ----------------------------------------------------------
+
+// benchmarkSlog logs one record with a typical mix of safe and sensitive
+// attributes. The buffer is reset per record, so the timing covers the
+// handler and masking rather than buffer growth.
+func benchmarkSlog(b *testing.B, opts *slog.HandlerOptions) {
+	var buffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buffer, opts))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buffer.Reset()
+		logger.Info("login", "user", "alice", "password", "dummy-password", "attempt", 3, "token", "dummy-token")
+	}
+	b.StopTimer()
+	benchmarkBytesSink = buffer.Bytes()
+	if len(benchmarkBytesSink) == 0 {
+		b.Fatal("empty benchmark output")
+	}
+}
+
+func BenchmarkSlogJSONUnmasked(b *testing.B) {
+	benchmarkSlog(b, nil)
+}
+
+func BenchmarkSlogJSONMasked(b *testing.B) {
+	benchmarkSlog(b, &slog.HandlerOptions{ReplaceAttr: slogmask.ReplaceAttr(newBenchMasker(b))})
+	if bytes.Contains(benchmarkBytesSink, []byte("dummy-")) {
+		b.Fatalf("secret reached the output: %s", benchmarkBytesSink)
+	}
+}
+
+func BenchmarkZerologmaskLine(b *testing.B) {
+	var buffer bytes.Buffer
+	w := zerologmask.NewWriter(&buffer, newBenchMasker(b))
+	line := []byte(`{"level":"info","user":"alice","password":"dummy-password","attempt":3,"token":"dummy-token","time":"2026-09-29T12:00:00Z","message":"login"}` + "\n")
+	var operationErr error
+	b.SetBytes(int64(len(line)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buffer.Reset()
+		_, operationErr = w.Write(line)
+	}
+	b.StopTimer()
+	benchmarkBytesSink = buffer.Bytes()
+	if operationErr != nil {
+		b.Fatal(operationErr)
+	}
+	if bytes.Contains(benchmarkBytesSink, []byte("dummy-")) {
+		b.Fatalf("secret reached the output: %s", benchmarkBytesSink)
+	}
 }
 
 func validateBenchmarkString(b *testing.B, err error) {

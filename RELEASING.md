@@ -25,6 +25,7 @@ make test
 make race
 make bench-matrix
 make fuzz
+make compat
 ```
 
 Then check the things CI cannot:

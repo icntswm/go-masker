@@ -338,7 +338,8 @@ logger.Info("login", "user", "alice", "password", "hunter2")
 ```
 
 Attributes in groups are matched by their own key, with the group names in the
-policy path. A safe scalar keeps its type, a masked one is logged as a string,
+policy path. Attributes added through `logger.With` and `WithGroup`, and the
+values returned by `LogValue`, are masked the same way. A safe scalar keeps its type, a masked one is logged as a string,
 an `error` is masked as its text, and an `Omit` decision drops the attribute.
 The built-in time, level, message, and source attributes, and the message text
 itself, are not masked: pass secrets as attributes, never in the message.
@@ -355,13 +356,15 @@ logger.Info().Str("user", "alice").Str("password", "hunter2").Msg("login")
 ```
 
 Masking the output line covers every field, including those added through
-`Interface` or `RawJSON`, and any logger that writes one JSON object per line
-works the same way. For human-readable output put the masking writer in front
-of `zerolog.ConsoleWriter`, so the console formats an already masked line. A
-writer that routes by level, such as a `zerolog.MultiLevelWriter`, loses that
-routing when wrapped: wrap each destination instead. A line the masker cannot
-parse is replaced by `{"message":"[REDACTED]"}`, and the message text itself
-is not masked: keep secrets out of the message.
+`Interface` or `RawJSON`. The line is re-encoded, so its keys come out sorted,
+as in every JSON document the masker writes. Any logger that writes one JSON
+object per line works the same way. For human-readable output put the masking
+writer in front of `zerolog.ConsoleWriter`, so the console formats an already
+masked line. A writer that routes by level, such as a
+`zerolog.MultiLevelWriter`, loses that routing when wrapped: wrap each
+destination instead. A line the masker cannot parse is replaced by
+`{"message":"[REDACTED]"}`, and the message text itself is not masked: keep
+secrets out of the message.
 
 ## Errors and fail-closed behavior
 
@@ -407,7 +410,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 6,797 lines of tests against 4,773 lines
+listed rather than asserted. There are 6,890 lines of tests against 4,776 lines
 of shipped code.
 
 | Check | Evidence |
@@ -415,6 +418,7 @@ of shipped code.
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
 | Security goldens | 48 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
+| Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` against the real zerolog in a separate test-only module, so the library keeps no dependency |
 | Examples | 29, executed and output-checked, so documentation cannot drift from behavior |
 | Coverage | 84.9% core, 90.7% `httpmask`, 88.6% `slogmask`, 94.9% `zerologmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |

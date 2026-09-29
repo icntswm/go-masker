@@ -12,7 +12,9 @@ API may still change, and every such change is listed here.
 
 - `zerologmask` package: `NewWriter(w, core)` masks JSON log lines from
   zerolog (or any logger writing one JSON object per line) before they reach
-  w, and replaces a line it cannot parse with the redaction marker.
+  w, and replaces a line it cannot parse with the redaction marker. Each
+  `Write` must carry whole lines; `Sync` is forwarded to w, so zap's
+  `zapcore.AddSync` keeps flushing the real destination.
 
 ## [0.2.0] - 2026-09-29
 

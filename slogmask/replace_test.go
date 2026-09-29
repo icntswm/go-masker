@@ -144,11 +144,46 @@ func TestReplaceAttrRecoversPanics(t *testing.T) {
 	}
 }
 
+type credentials struct{}
+
+func (credentials) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("user", "alice"), slog.String("password", "dummy-password"))
+}
+
+func TestReplaceAttrMasksResolvedLogValuer(t *testing.T) {
+	line, record := logRecord(t, newCore(t), slog.Any("creds", credentials{}))
+	if strings.Contains(line, "dummy-password") {
+		t.Fatalf("a LogValue result bypassed masking: %s", line)
+	}
+	creds, ok := record["creds"].(map[string]any)
+	if !ok || creds["user"] != "alice" || creds["password"] != masker.DefaultRedactionMarker {
+		t.Fatalf("creds: %#v", record["creds"])
+	}
+}
+
+func TestReplaceAttrMasksLoggerContext(t *testing.T) {
+	var buffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buffer, &slog.HandlerOptions{ReplaceAttr: ReplaceAttr(newCore(t))}))
+	logger.With("password", "dummy-password").WithGroup("req").With("token", "dummy-token").Info("request handled", "user", "alice")
+	line := buffer.String()
+	if strings.Contains(line, "dummy-") {
+		t.Fatalf("an attribute added through With bypassed masking: %s", line)
+	}
+	record := map[string]any{}
+	if err := json.Unmarshal(buffer.Bytes(), &record); err != nil {
+		t.Fatal(err)
+	}
+	req, ok := record["req"].(map[string]any)
+	if !ok || req["token"] != masker.DefaultRedactionMarker || req["user"] != "alice" || record["password"] != masker.DefaultRedactionMarker {
+		t.Fatalf("record: %s", line)
+	}
+}
+
 type userRecord struct{ Name string }
 
 type attemptCount int
 
-func TestReplaceAttrReviewCases(t *testing.T) {
+func TestReplaceAttrBuiltinKeysNilsAndNamedTypes(t *testing.T) {
 	line, record := logRecord(t, newCore(t),
 		slog.Any("msg", map[string]any{"password": "dummy-password"}),
 		slog.Any("level", "dummy-level"),
@@ -188,7 +223,7 @@ func (leakyCount) String() string { return "dummy-leak" }
 
 type leakyHolder struct{ Count leakyCount }
 
-func TestReplaceAttrSecondReviewCases(t *testing.T) {
+func TestReplaceAttrNumbersPointersAndOmit(t *testing.T) {
 	numbers := masker.PolicyFunc(func(field masker.Field) (masker.Decision, error) {
 		if field.Kind == masker.KindNumber {
 			return masker.Decision{Rule: masker.FullRule()}, nil
@@ -250,7 +285,7 @@ func TestReplaceAttrSecondReviewCases(t *testing.T) {
 	}
 }
 
-func TestReplaceAttrFourthReviewCases(t *testing.T) {
+func TestReplaceAttrNilSourceAndZeroAttr(t *testing.T) {
 	line, record := logRecord(t, newCore(t), slog.Any(slog.SourceKey, (*slog.Source)(nil)))
 	if _, present := record[slog.SourceKey]; !present {
 		t.Fatalf("nil source attribute was dropped: %s", line)

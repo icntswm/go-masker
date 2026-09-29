@@ -42,6 +42,23 @@ for capacity planning.
 Flat and wide structs use the specialized scalar-struct path with compiled
 field metadata. The nested cases pay the general reflection walker.
 
+## Logger adapters
+
+One `Info` record with four attributes, two of them sensitive. These rows were
+measured later than the table above, on the same hardware and Go, with
+`go test -run '^$' -bench 'Slog|Zerologmask' -benchmem -count=5 .`; the
+median of 5 runs is shown.
+
+| Case | ns/op | B/op | allocs/op |
+|---|---:|---:|---:|
+| `log/slog` JSON handler, no masking | 533 | 0 | 0 |
+| `log/slog` JSON handler, `slogmask.ReplaceAttr` | 1,508 | 320 | 18 |
+| `zerologmask` writer, one 142-byte line | 1,515 | 1,784 | 27 |
+
+`slogmask` masks each attribute as it is written. `zerologmask` parses and
+re-encodes the finished line, which costs about as much as masking a
+one-record JSON document above; the logger's own time is not included.
+
 ## JSON by document size
 
 | Records | Time | Throughput | B/op | allocs/op |

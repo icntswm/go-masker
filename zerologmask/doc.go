@@ -24,8 +24,8 @@
 // A writer that routes by level, such as zerolog's MultiLevelWriter, loses
 // that routing when wrapped, because NewWriter implements io.Writer only:
 // wrap each destination instead. Keys are masked by the policy like any JSON
-// document; the message text itself is not inspected by key, so keep secrets
-// out of the message. A line that is not a JSON document, or that exceeds the
+// document, and the re-encoded line lists them in sorted order; the message
+// text itself is not inspected by key, so keep secrets out of the message. A line that is not a JSON document, or that exceeds the
 // masker's input limit, is replaced by {"message":"<marker>"}: the original
 // line is never written.
 package zerologmask

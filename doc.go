@@ -17,7 +17,10 @@
 // keeps safe primitive types in reflection results.
 //
 // Error categories are available through errors.Is and the exported Err*
-// values; detailed safe context is available through errors.As. The httpmask
-// subpackage applies the same policy to headers and URLs, always fully
-// redacting cookies and URL userinfo.
+// values; detailed safe context is available through errors.As.
+//
+// Subpackages apply the same policy at the edges: httpmask to headers and
+// URLs, always fully redacting cookies and URL userinfo; slogmask to log/slog
+// attributes; and zerologmask to the JSON lines written by zerolog or any
+// other logger that writes one JSON object per line.
 package masker
