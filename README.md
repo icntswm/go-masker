@@ -27,6 +27,7 @@ It provides one policy and rule model for:
 - strings and scalar values;
 - arbitrary nested Go values;
 - JSON documents and readers;
+- URLs, JSON bodies and forms carried inside string values;
 - struct tags;
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
@@ -67,6 +68,7 @@ Each of those claims is checked by the suite; see
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [What is masked](#what-is-masked)
+- [Documents inside strings](#documents-inside-strings)
 - [Core concepts](#core-concepts)
 - [JSON](#json)
 - [Struct tags](#struct-tags)
@@ -168,6 +170,40 @@ Built-in rules are available directly through `PasswordRule`, `TokenRule`,
 Partial rules preserve only a deliberately limited safe shape. Short or
 ambiguous phone/card values and values containing unexpected text are fully
 redacted.
+
+## Documents inside strings
+
+A secret often reaches a log inside a value whose own name is harmless: a
+callback URL, a request body logged as a string, a form. When the policy
+leaves a string field alone, the masker looks at the value itself, and if the
+whole value is one of these documents, masks it by the keys inside it:
+
+```go
+m.MaskValue("note", "https://u:pass@h/cb?token=abc#state")
+// https://%5BREDACTED%5D@h/cb?token=%5BREDACTED%5D#%5BREDACTED%5D
+m.MaskValue("note", `{"password":"secret","user":"alice"}`)
+// {"password":"[REDACTED]","user":"alice"}
+m.MaskValue("note", "user=alice&password=secret")
+// password=%5BREDACTED%5D&user=alice
+```
+
+Recognition is strict, so prose is left alone:
+
+- a URL is a single absolute `scheme://host` token without spaces; its
+  userinfo and fragment are replaced as `httpmask` replaces them, and each
+  query parameter is masked by its key;
+- a JSON document is a string that is, apart from surrounding whitespace,
+  one valid object or array; it is masked exactly as `MaskJSON` masks it;
+- a form is `key=value` pairs joined by `&`, with no spaces, no `;` and valid
+  percent-encoding.
+
+A value is rewritten only when something in it was masked; otherwise it comes
+back byte for byte. A document may hold another one, such as a JSON body with a
+`redirect_uri`, and is inspected to the same depth, node and input limits as the
+value around it. A string that looks like a URL but whose query does not parse
+becomes the marker. A field whose own key the policy masks or omits is decided
+by that key and is never inspected. `WithoutEmbeddedDocuments()` turns the
+inspection off.
 
 ## Core concepts
 

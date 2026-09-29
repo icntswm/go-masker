@@ -76,6 +76,15 @@ wrapped. zap repeats a field's content under diagnostic keys (`keyVerbose`,
 `keyCauses`, `keyError`); the writer decides each of them as its base key, so
 the policy does not need to list them.
 
+A secret in a string whose key the policy does not know is masked only when
+the whole string is a document the masker recognizes: an absolute URL, one
+JSON object or array, or a strict `key=value&…` form. Recognition is strict on
+purpose, so prose, a URL inside a sentence, a relative URL or a `key: value`
+header line is passed through as it is. Inspection shares the depth, node and
+input limits of the value around it, so nesting documents in strings cannot
+exceed them. `WithoutEmbeddedDocuments()` turns it off; a caller who does so
+accepts that a body or callback URL logged as a string is written unmasked.
+
 URLs preserve paths by default for compatibility. Userinfo is always redacted,
 and so is the fragment unless the caller asks the HTTP adapter to keep it.
 Cookies and Set-Cookie headers are fully redacted in the MVP.

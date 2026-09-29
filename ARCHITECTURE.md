@@ -69,6 +69,7 @@ go-masker/
 ├── Makefile
 ├── .golangci.yml
 ├── doc.go
+├── embedded.go
 ├── errors.go
 ├── json.go
 ├── json_encode.go
@@ -95,6 +96,7 @@ go-masker/
 │   ├── replace.go
 │   └── *_test.go
 ├── internal/jsonline/       # line-masking engine of both writers
+├── internal/urlquery/       # query parser shared by httpmask and embedded.go
 ├── zerologmask/
 │   ├── doc.go
 │   ├── writer.go
@@ -677,6 +679,30 @@ value is masked.
 
 All JSON documents use the streaming walker. The input itself is still held in
 memory by `MaskJSON` and `MaskJSONReader`.
+
+### 9.3 Documents inside strings
+
+Every walker, and the scalar fast path, inspects a string whose field the
+policy leaves without a rule (`embedded.go`). A cheap prefilter looks for a
+leading `{` or `[`, `://` or `=` before any path is built, so an ordinary
+string costs no allocation. A candidate is tried as an absolute URL, then as
+one JSON document, then as a strict form, and the first grammar that accepts
+the whole string wins:
+
+- a URL keeps the `httpmask` treatment: userinfo and fragment become the
+  marker, and each query value is decided by its key through
+  `internal/urlquery`, the parser `httpmask` uses too;
+- a JSON document is masked by a nested `streamJSONWalker` rooted at the
+  string's path, so the result equals `MaskJSON` output;
+- a form is decided pair by pair like a query.
+
+A decoded value with no rule of its own is inspected again, so documents
+nest. The nested work shares the outer node counter, error list and stop flag,
+and runs one level deeper, so the traversal limits bound the total. A string is
+rewritten only when something inside it changed; otherwise the original bytes
+are kept. A URL whose query cannot be parsed becomes the marker without an
+error, so one unusual link does not fail the surrounding document.
+`WithoutEmbeddedDocuments()` disables the inspection.
 
 ## 10. HTTP adapter
 

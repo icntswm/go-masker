@@ -10,6 +10,13 @@ API may still change, and every such change is listed here.
 
 ### Added
 
+- Documents inside string values are masked: when the policy leaves a string
+  field alone and the whole string is an absolute URL, one JSON object or
+  array, or a strict `key=value&…` form, its userinfo, fragment, query
+  parameters and members are masked by their own keys, so a callback URL or a
+  request body logged as a string no longer leaks the secrets inside it. This
+  is on by default in every API and adapter; `WithoutEmbeddedDocuments()`
+  turns it off. A string is rewritten only when something in it was masked.
 - `zapmask` package: `NewWriteSyncer(w, core)` masks the JSON lines zap's JSON
   encoder writes, after encoding. It has the `Write` and `Sync` methods of
   `zapcore.WriteSyncer`, so it goes to `zapcore.NewCore` directly. A key zap
