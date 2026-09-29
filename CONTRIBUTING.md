@@ -30,7 +30,7 @@ make test          # go test ./...
 make race          # go test -race ./...
 make bench         # root benchmarks, 5 runs each
 make bench-matrix  # 260 masking scenarios, each result checked
-make fuzz          # all five fuzz targets, 200,000 executions each
+make fuzz          # all six fuzz targets, 200,000 executions each
 make vulncheck     # govulncheck against the standard library
 ```
 
@@ -65,7 +65,7 @@ and a CI run cannot diverge.
 | --- | --- |
 | `Tests & checks` | `make vet`, `make fmt-check`, `make test`, `make race` — on Go 1.23.x through 1.27.x plus `stable` |
 | `Masking matrix` | `make bench-matrix` on the same six versions |
-| `Fuzz smoke` | `make fuzz`, all five targets at 200,000 executions each, on the same six versions |
+| `Fuzz smoke` | `make fuzz`, all six targets at 200,000 executions each, on the same six versions |
 | `Vulnerability scan` | `make vulncheck` on a recent toolchain |
 | `Lint` | `golangci-lint`, on one pinned Go version |
 

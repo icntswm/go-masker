@@ -1,4 +1,4 @@
-.PHONY: fmt fmt-check vet lint vulncheck test race bench bench-matrix fuzz fuzz-core fuzz-http fuzz-json fuzz-string fuzz-policy fuzz-json-parity
+.PHONY: fmt fmt-check vet lint vulncheck test race bench bench-matrix fuzz fuzz-core fuzz-http fuzz-json fuzz-string fuzz-policy fuzz-json-parity fuzz-detect
 
 fmt:
 	gofmt -w .
@@ -45,7 +45,7 @@ FUZZTIME ?= 200000x
 
 fuzz: fuzz-core fuzz-http
 
-fuzz-core: fuzz-json fuzz-string fuzz-policy fuzz-json-parity
+fuzz-core: fuzz-json fuzz-string fuzz-policy fuzz-json-parity fuzz-detect
 
 fuzz-json:
 	go test -run '^$$' -fuzz FuzzMaskJSON -fuzztime $(FUZZTIME) .
@@ -58,6 +58,9 @@ fuzz-policy:
 
 fuzz-json-parity:
 	go test -run '^$$' -fuzz FuzzJSONWalkerMatchesReflection -fuzztime $(FUZZTIME) .
+
+fuzz-detect:
+	go test -run '^$$' -fuzz FuzzCandidateMatchesFind -fuzztime $(FUZZTIME) ./internal/detect
 
 fuzz-http:
 	go test -run '^$$' -fuzz FuzzURLString -fuzztime $(FUZZTIME) ./httpmask
