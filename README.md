@@ -29,11 +29,11 @@ It provides one policy and rule model for:
 - struct tags;
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
-- JSON log lines from zerolog through `zerologmask`;
-- zap fields through the `zapmask` module.
+- JSON log lines from zerolog, zap or any JSON-line logger through
+  `jsonlogmask`.
 
-The core has no third-party runtime dependencies and does not depend on an HTTP
-framework or logging library.
+The module has no third-party dependencies, not even in its tests, and does
+not depend on an HTTP framework or logging library.
 
 ## Why a library instead of a field filter
 
@@ -110,16 +110,12 @@ The adapters are separate packages in the same module:
 import (
 	"github.com/icntswm/go-masker/httpmask"    // HTTP headers and URLs
 	"github.com/icntswm/go-masker/slogmask"    // log/slog attributes
-	"github.com/icntswm/go-masker/zerologmask" // zerolog and other JSON-line loggers
+	"github.com/icntswm/go-masker/jsonlogmask" // zerolog, zap and other JSON-line loggers
 )
 ```
 
-The zap adapter is a separate module, so the library itself keeps no
-third-party dependency:
-
-```text
-go get github.com/icntswm/go-masker/zapmask
-```
+`zerologmask`, the former name of `jsonlogmask`, still works and is
+deprecated.
 
 ## Quick start
 
@@ -367,11 +363,11 @@ before `slog.SetDefault`, and third-party handlers that ignore
 
 ## zerolog
 
-The `zerologmask` adapter wraps the logger's writer, because zerolog serializes
+The `jsonlogmask` adapter wraps the logger's writer, because zerolog serializes
 its fields as they are added and its hooks cannot change what is written:
 
 ```go
-logger := zerolog.New(zerologmask.NewWriter(os.Stdout, m))
+logger := zerolog.New(jsonlogmask.NewWriter(os.Stdout, m))
 logger.Info().Str("user", "alice").Str("password", "hunter2").Msg("login")
 // {"level":"info","message":"login","password":"[REDACTED]","user":"alice"}
 ```
@@ -386,29 +382,30 @@ masked line. A writer that routes or filters by level, such as a
 wrapped and receives every level: wrap each destination instead. zerolog built
 with the `binary_log` tag writes CBOR, not JSON, and every line is replaced. A line the masker cannot parse is replaced by
 `{"message":"[REDACTED]"}`, and the message text itself is not masked: keep
-secrets out of the message. For zap, prefer `zapmask`: it masks fields before
-they are encoded and keeps their order.
+secrets out of the message.
 
 ## zap
 
-The `zapmask` module wraps the logger's core, so fields are masked before any
-encoder sees them:
+The same writer masks zap's JSON encoder when it is the core's write syncer,
+so the library does not import zap:
 
 ```go
-logger, err := zap.NewProduction(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
-	return zapmask.NewCore(c, m)
-}))
+sink := zapcore.AddSync(jsonlogmask.NewWriter(os.Stdout, m))
+logger := zap.New(zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), sink, zap.InfoLevel))
 logger.Info("login", zap.String("user", "alice"), zap.String("password", "hunter2"))
-// {"level":"info",...,"msg":"login","user":"alice","password":"[REDACTED]"}
+// {"level":"info","msg":"login","password":"[REDACTED]","ts":...,"user":"alice"}
 ```
 
-Fields added through `With` and fields at the call site are masked the same way,
-for every encoder. The policy sees `zap.Namespace` keys in the path, such as
-`$[req][token]`, and decides each namespace as an object first, so fields
-written into a `credentials` namespace are masked. Sampling, level filtering
-and `zapcore.Tee` branches keep working, because the inner core still decides
-what is written. The message is not masked, and an error field is logged as its
-masked text without zap's `errorVerbose` detail, also inside `zap.Dict`.
+Fields added through `With`, `zap.Dict` and `zap.Any` values are masked like
+any nested object, and a `zap.Namespace` is decided as an object, so a
+`credentials` namespace becomes the marker as a whole. Sampling, level
+filtering, `zapcore.Tee` and `zapcore.BufferedWriteSyncer` keep working,
+because the writer only sees what zap has decided to write. zap writes an
+error's `%+v` text under `keyVerbose`, a multi-error's parts under
+`keyCauses` and a panic while encoding a field under `keyError`; each of these
+is also decided as its base key, so `zap.NamedError("token", err)` does not
+log the token again under `tokenVerbose`. The console encoder does not write
+JSON, and every one of its lines is replaced by the marker line.
 
 ## Errors and fail-closed behavior
 
@@ -454,7 +451,7 @@ model.
 ## How it is tested
 
 A masking library is only worth what its test suite proves, so the evidence is
-listed rather than asserted. There are 8,018 lines of tests against 5,704 lines
+listed rather than asserted. There are 7,315 lines of tests against 5,139 lines
 of shipped code.
 
 | Check | Evidence |
@@ -462,9 +459,9 @@ of shipped code.
 | Masking scenarios | 260 generated cases across JSON, reflection, URLs and headers; each checks the masked result, not just that nothing panicked |
 | Security goldens | 45 recorded decisions in 8 files, covering rules, key casing, limits, nesting, errors and URLs |
 | Fuzzing | 5 targets: JSON, strings, case-folded policy lookup, JSON/reflection parity, URLs |
-| Logger adapters | `slogmask` through the real `log/slog` handlers; `zerologmask` against the real zerolog in a separate test-only module, so the library keeps no dependency; `zapmask` against the real zap in its own module |
-| Examples | 30, executed and output-checked, so documentation cannot drift from behavior |
-| Coverage | 85.3% core, 90.7% `httpmask`, 91.8% `slogmask`, 94.9% `zerologmask`, 76.2% `zapmask` |
+| Logger adapters | `slogmask` through the real `log/slog` handlers; `jsonlogmask` against lines captured from the real zerolog and zap, so the module keeps no dependency |
+| Examples | 31, executed and output-checked, so documentation cannot drift from behavior |
+| Coverage | 85.3% core, 90.7% `httpmask`, 91.8% `slogmask`, 94.3% `jsonlogmask` |
 | Go versions | tests, race suite, matrix and fuzz smoke on 1.23.x through 1.27.x plus `stable` |
 | Supply chain | `govulncheck` on every push, reporting standard-library advisories the code actually reaches |
 

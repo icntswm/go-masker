@@ -1,8 +1,8 @@
 version: 2
 
 updates:
-  # The library has no third-party dependencies, so the workflow actions and
-  # the nested zerolog compatibility module are all that need watching.
+  # The module has no third-party dependencies, so the workflow actions are
+  # all that need watching.
   # Pinned action majors go stale quietly: a runner deprecation is announced
   # as a warning long before it becomes an error.
   - package-ecosystem: github-actions
@@ -19,17 +19,3 @@ updates:
       codeql-action:
         patterns:
           - github/codeql-action*
-
-  # Tests zerologmask against the real zerolog. The nested module is outside
-  # the published library, which itself keeps no third-party dependency.
-  - package-ecosystem: gomod
-    directory: /internal/zerologcompat
-    schedule:
-      interval: monthly
-    commit-message:
-      prefix: deps
-    labels:
-      - dependencies
-
-  # zapmask is left out on purpose: its require lines are the minimum versions
-  # it supports, and a bump would force every user of the module up with it.

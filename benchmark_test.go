@@ -14,8 +14,8 @@ import (
 
 	"github.com/icntswm/go-masker"
 	"github.com/icntswm/go-masker/httpmask"
+	"github.com/icntswm/go-masker/jsonlogmask"
 	"github.com/icntswm/go-masker/slogmask"
-	"github.com/icntswm/go-masker/zerologmask"
 )
 
 var (
@@ -520,9 +520,9 @@ func BenchmarkSlogJSONMasked(b *testing.B) {
 	}
 }
 
-func BenchmarkZerologmaskLine(b *testing.B) {
+func BenchmarkJSONLogLine(b *testing.B) {
 	var buffer bytes.Buffer
-	w := zerologmask.NewWriter(&buffer, newBenchMasker(b))
+	w := jsonlogmask.NewWriter(&buffer, newBenchMasker(b))
 	line := []byte(`{"level":"info","user":"alice","password":"dummy-password","attempt":3,"token":"dummy-token","time":"2026-09-29T12:00:00Z","message":"login"}` + "\n")
 	var operationErr error
 	b.SetBytes(int64(len(line)))

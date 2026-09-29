@@ -21,7 +21,6 @@
 //
 // Subpackages apply the same policy at the edges: httpmask to headers and
 // URLs, always fully redacting cookies and URL userinfo; slogmask to log/slog
-// attributes; zerologmask to the JSON lines written by zerolog or any other
-// logger that writes one JSON object per line; and zapmask, a separate module,
-// to zap fields.
+// attributes; and jsonlogmask to the JSON lines written by zerolog, zap or
+// any other logger that writes one JSON object per line.
 package masker

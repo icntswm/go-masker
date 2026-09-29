@@ -18,9 +18,8 @@ The initial scope includes:
 - built-in struct tags;
 - HTTP headers and URLs through `httpmask`;
 - `log/slog` attributes through `slogmask`;
-- JSON log lines through `zerologmask`, which wraps the output writer;
-- zap fields through `zapmask`, a separate module that wraps a
-  `zapcore.Core`.
+- JSON log lines from zerolog, zap and other loggers through `jsonlogmask`,
+  which wraps the output writer.
 
 The security properties are more important than preserving the exact input
 shape or maximizing throughput:
@@ -94,19 +93,15 @@ go-masker/
 │   ├── doc.go
 │   ├── replace.go
 │   └── *_test.go
-├── zerologmask/
+├── jsonlogmask/
 │   ├── doc.go
 │   ├── writer.go
 │   └── *_test.go
-├── zapmask/                 # separate module
-│   ├── doc.go
-│   ├── core.go
-│   └── *_test.go
+├── zerologmask/             # deprecated alias of jsonlogmask
 ├── testdata/
 │   └── security_decisions/
 ├── internal/
-│   ├── outputdigest/
-│   └── zerologcompat/       # separate module
+│   └── outputdigest/
 ├── benchmark_matrix_test.go
 ├── benchmark_test.go
 ├── examples_test.go
@@ -128,23 +123,20 @@ traversal engine.
 
 The module has no third-party dependencies, so the repository contains no
 `go.sum`. Benchmarks live in the root package and add no dependency of their
-own. The one exception is `internal/zerologcompat`, a separate test-only module
-with its own `go.mod` and `go.sum` that checks `zerologmask` against the real
-zerolog; it is not part of the published module, so the library itself still
-has no third-party dependencies.
+own. `jsonlogmask` is tested against lines captured from the real zerolog and
+zap rather than against the loggers, so the tests need no dependency either;
+the captured lines are recaptured when a logger changes its output format.
 
-`zapmask` must import zap, so it is a separate published module with its own
-`go.mod` and `go.sum`, versioned by `zapmask/vX.Y.Z` tags. Its require lines
-are the minimum versions it supports. It masks fields, not encoded output:
-`Check` asks the inner core's own `Check` first and, when it accepts the entry,
-adds a one-shot core that masks the fields and writes them into the entry the
-inner core returned, so sampling and the levels of each `Tee` branch keep
-deciding what is written, and a rejected entry is never masked. zap's own
-diagnostics inside a marshaler's output (`${key}Verbose`, and `${key}Error`
-for a failed or panicking member) are removed and the failed member becomes
-the marker, as at the top level. A `zap.Namespace` is decided as an
-object before the fields written into it, as `slogmask` does for groups. The
-entry (message, logger name, caller, stack) is not masked.
+Logger adapters for zap and zerolog work on the encoded output, not on typed
+fields. zap's `zapcore.Core`, `Encoder`, `ObjectMarshaler` and hooks all take
+zap's own types, so masking fields before they are encoded would need a zap
+import and with it a separate module. The writer needs only `io.Writer`, which
+`zapcore.AddSync` accepts. The cost is that it sees JSON only: zap's console
+encoder and zerolog's CBOR build lose every line to the fallback. zap writes
+diagnostics next to a field under a suffixed key (`${key}Verbose`,
+`${key}Causes`, `${key}Error`) that repeat the field's content; the writer
+decides each of them as its base key as well, so a sensitive base keeps its
+diagnostics masked whatever the policy says about the suffixed key.
 
 ## 4. Core public API
 
@@ -661,7 +653,7 @@ the call with `ErrInvalidJSON` rather than let a stalled reader spin forever.
 
 There is intentionally no streaming `io.Writer` API for a single document:
 once a writer has received a prefix, a later parse error cannot retract a
-potentially unsafe operation. `zerologmask` does not break this rule. It masks
+potentially unsafe operation. `jsonlogmask` does not break this rule. It masks
 whole lines, each a complete document, and writes nothing of a line until the
 line is masked; a record split across two `Write` calls is replaced by the
 fallback line rather than buffered.
@@ -747,9 +739,9 @@ or nested values. Returned containers do not alias input containers.
 Custom Policies and Rules must be concurrency-safe. The library validates their
 outputs but cannot make arbitrary user state safe. A Policy must also be
 deterministic, returning the same Decision for the same Field: struct field
-decisions are cached, and `slogmask` and `zapmask` decide a group or namespace
-again for each member written into it, so a policy that changes its answer
-could mask one member and pass the next.
+decisions are cached, and `slogmask` decides a group again for each member
+written into it, so a policy that changes its answer could mask one member
+and pass the next.
 
 ## 12. Threat model
 
@@ -842,7 +834,7 @@ release it was built with and fails on a newer toolchain.
 
 The following items are outside the current scope:
 
-- JSON Lines input to `MaskJSON` and `MaskJSONReader` (only `zerologmask`
+- JSON Lines input to `MaskJSON` and `MaskJSONReader` (only `jsonlogmask`
   splits lines);
 - integer map keys;
 - optional code generation;
@@ -886,7 +878,7 @@ fall back to the original value when masking returns an error.
   around the digits, use full redaction; ordinary phone/card separators are
   retained only when there are more than four digits.
 - Reflection inputs with invalid UTF-8 fail closed with `ErrInvalidUTF8`.
-- `zerologmask` masks whole lines only: a record split across two `Write`
+- `jsonlogmask` masks whole lines only: a record split across two `Write`
   calls is replaced by the fallback line, and wrapping a level-routing or
   level-filtering destination such as zerolog's `MultiLevelWriter` or
   `FilteredLevelWriter` loses its routing. zerolog's `binary_log` build writes

@@ -5,10 +5,10 @@ not open an issue for them, follow [SECURITY.md](SECURITY.md) instead.
 
 ## Getting set up
 
-The project needs Go 1.23 or newer and nothing else. The library has no
-third-party dependencies and therefore no `go.sum`; only the test-only module
-in `internal/zerologcompat` pulls in zerolog, and the separate `zapmask`
-module pulls in zap.
+The project needs Go 1.23 or newer and nothing else. The module has no
+third-party dependencies and therefore no `go.sum`, including in its tests:
+`jsonlogmask` is checked against lines captured from the real zerolog and
+zap, not against the loggers themselves.
 
 ```text
 git clone https://github.com/icntswm/go-masker
@@ -25,15 +25,13 @@ currently `v2.11.4`; see [Linting](#linting) for why the version matters.
 make fmt           # gofmt -w .
 make fmt-check     # fail if gofmt would change anything
 make vet           # go vet ./...
-make lint          # golangci-lint config verify + run, root and zapmask
+make lint          # golangci-lint config verify + run
 make test          # go test ./...
 make race          # go test -race ./...
 make bench         # root benchmarks, 5 runs each
 make bench-matrix  # 260 masking scenarios, each result checked
 make fuzz          # all five fuzz targets, 200,000 executions each
 make vulncheck     # govulncheck against the standard library
-make compat        # zerologmask against the real zerolog
-make zapmask       # zapmask module: vet, format and race tests
 ```
 
 The 260 masking scenarios run twice. `make test` executes them through
@@ -60,9 +58,10 @@ counting executions instead; see the `fuzz` target in the Makefile.
 
 ## What CI runs
 
-Seven jobs, each running a Makefile target, so a local run and a CI run cannot
-diverge. All but `zerolog compatibility` are required: a change on the zerolog
-side should not block a fix to the library itself.
+Five jobs, each running a Makefile target, so a local run and a CI run cannot
+diverge. A merge into `main` waits for `Tests & checks` on every version,
+`Masking matrix` on 1.23.x and `stable`, `Lint`, `Vulnerability scan` and
+CodeQL.
 
 | Job | What it does |
 | --- | --- |
@@ -70,9 +69,7 @@ side should not block a fix to the library itself.
 | `Masking matrix` | `make bench-matrix` on the same six versions |
 | `Fuzz smoke` | `make fuzz`, all five targets at 200,000 executions each, on the same six versions |
 | `Vulnerability scan` | `make vulncheck` on a recent toolchain |
-| `zerolog compatibility` | `make compat` on `stable` |
-| `zapmask` | `make zapmask` on the same six versions |
-| `Lint` | `golangci-lint` on the root module and `zapmask`, on one pinned Go version |
+| `Lint` | `golangci-lint`, on one pinned Go version |
 
 Two more workflows run beside these. `CodeQL` looks for exploitable patterns
 rather than style, and `Scorecard` scores the repository rather than the code.

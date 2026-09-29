@@ -1,4 +1,4 @@
-package zerologmask
+package jsonlogmask
 
 import (
 	"bytes"

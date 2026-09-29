@@ -53,9 +53,9 @@ median of 5 runs is shown.
 |---|---:|---:|---:|
 | `log/slog` JSON handler, no masking | 528 | 0 | 0 |
 | `log/slog` JSON handler, `slogmask.ReplaceAttr` | 1,527 | 320 | 18 |
-| `zerologmask` writer, one 142-byte line | 979 | 248 | 11 |
+| `jsonlogmask` writer, one 142-byte line | 979 | 248 | 11 |
 
-`slogmask` masks each attribute as it is written. `zerologmask` parses and
+`slogmask` masks each attribute as it is written. `jsonlogmask` parses and
 re-encodes the finished line, which costs about as much as masking a
 one-record JSON document below; the logger's own time is not included.
 

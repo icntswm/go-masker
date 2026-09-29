@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Releases follow semantic versioning; while the major version is `0` the public
 API may still change, and every such change is listed here.
 
+## [Unreleased]
+
+### Added
+
+- `jsonlogmask` package: the JSON-line writer under a name that fits every
+  logger it serves. With zap it is the core's write syncer through
+  `zapcore.AddSync`, and a key zap writes next to a field, `keyVerbose`,
+  `keyCauses` or `keyError`, is also decided as its base key: before,
+  `zap.NamedError("token", err)` logged the token's `%+v` text, a
+  multi-error's parts or a panic message under a key the policy did not know.
+
+### Deprecated
+
+- `zerologmask`: use `jsonlogmask`. `zerologmask.NewWriter` returns the same
+  writer.
+
+### Removed
+
+- The `zapmask` module, which was never tagged. Masking zap fields before
+  encoding needs zap's types and therefore a separate module with a
+  third-party dependency; `jsonlogmask` masks zap's JSON output without one.
+  The test-only `internal/zerologcompat` module is gone too: the writer is
+  checked against captured zerolog and zap lines, so the repository has a
+  single `go.mod` and no dependency.
+
 ## [0.4.0] - 2026-09-29
 
 ### Added

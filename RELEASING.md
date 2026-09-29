@@ -25,8 +25,6 @@ make test
 make race
 make bench-matrix
 make fuzz
-make compat
-make zapmask
 ```
 
 Then check the things CI cannot:
@@ -65,24 +63,6 @@ slsa-verifier verify-artifact go-masker-vX.Y.Z.tar.gz \
   --provenance-path go-masker-vX.Y.Z.tar.gz.intoto.jsonl \
   --source-uri github.com/icntswm/go-masker --source-tag vX.Y.Z
 ```
-
-## Releasing zapmask
-
-`zapmask` is a separate module with its own tags, prefixed by its directory:
-
-```text
-git tag -a zapmask/vX.Y.Z -m "zapmask/vX.Y.Z"
-git push origin zapmask/vX.Y.Z
-```
-
-The provenance workflow runs only for root `v*` tags. A `zapmask` release that
-needs new root API waits for the root release and raises its
-`github.com/icntswm/go-masker` require line first; until then it builds
-against the last tagged root, not the code in this repository.
-
-The first `zapmask` release must require a root release after `v0.3.0`: that
-release is where reflection traversal masks a `json.RawMessage` by its keys,
-and against `v0.3.0` a `zap.Any` field holding one is logged as base64.
 
 ## After tagging
 
