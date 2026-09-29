@@ -46,8 +46,17 @@ func main() {
 			out, err := m.MaskJSON([]byte(d))
 			emit("json:"+marker, out, err)
 		}
-		v, err := m.MaskAny(map[string]any{"password": "x", "n": 1, "s": []any{"a", true}})
-		emit("any:"+marker, []byte(fmt.Sprintf("%v", v)), err)
+		// %#v keeps dynamic types, so a number that turns into a string, or
+		// the reverse, changes the digest.
+		anyInput := map[string]any{"password": "x", "n": 1, "f": 2.5, "s": []any{"a", true, nil}, "o": map[string]any{}}
+		v, err := m.MaskAny(anyInput)
+		emit("any:"+marker, []byte(fmt.Sprintf("%#v", v)), err)
+		typed, err := masker.New(masker.DefaultPolicy(), append(opts, masker.WithPreserveSafeTypes())...)
+		if err != nil {
+			panic(err)
+		}
+		v, err = typed.MaskAny(anyInput)
+		emit("anytyped:"+marker, []byte(fmt.Sprintf("%#v", v)), err)
 
 		a, err := httpmask.New(m)
 		if err != nil {

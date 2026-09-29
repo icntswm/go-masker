@@ -520,6 +520,57 @@ func BenchmarkSlogJSONMasked(b *testing.B) {
 	}
 }
 
+// benchmarkSlogShape logs one record through the masking adapter and checks
+// that no dummy secret reached the output.
+func benchmarkSlogShape(b *testing.B, log func(*slog.Logger)) {
+	var buffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buffer, &slog.HandlerOptions{ReplaceAttr: slogmask.ReplaceAttr(newBenchMasker(b))}))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buffer.Reset()
+		log(logger)
+	}
+	b.StopTimer()
+	benchmarkBytesSink = buffer.Bytes()
+	if len(benchmarkBytesSink) == 0 || bytes.Contains(benchmarkBytesSink, []byte("dummy-")) {
+		b.Fatalf("unexpected output: %s", benchmarkBytesSink)
+	}
+}
+
+// BenchmarkSlogJSONScalars has no sensitive attribute: the whole cost is the
+// adapter deciding to keep plain strings, numbers and booleans.
+func BenchmarkSlogJSONScalars(b *testing.B) {
+	benchmarkSlogShape(b, func(logger *slog.Logger) {
+		logger.Info("request", "method", "GET", "status", 200, "bytes", int64(5120), "cached", false, "ratio", 0.75)
+	})
+}
+
+type benchSlogUser struct {
+	Name     string
+	Email    string
+	Password string
+	Age      int
+}
+
+func BenchmarkSlogJSONStruct(b *testing.B) {
+	user := benchSlogUser{Name: "alice", Email: "alice@example.com", Password: "dummy-password", Age: 30}
+	benchmarkSlogShape(b, func(logger *slog.Logger) {
+		logger.Info("login", "user", user)
+	})
+}
+
+// BenchmarkSlogJSONGroups nests attributes two levels deep, so every leaf
+// pays for the decisions on its enclosing group names.
+func BenchmarkSlogJSONGroups(b *testing.B) {
+	benchmarkSlogShape(b, func(logger *slog.Logger) {
+		logger.Info("request",
+			slog.Group("http", "method", "GET", "path", "/login",
+				slog.Group("headers", "accept", "*/*", "authorization", "Bearer dummy-token")),
+			slog.Group("client", "ip", "10.0.0.1", "agent", "curl"))
+	})
+}
+
 func BenchmarkJSONLogLine(b *testing.B) {
 	var buffer bytes.Buffer
 	w := zerologmask.NewWriter(&buffer, newBenchMasker(b))

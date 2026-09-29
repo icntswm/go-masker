@@ -147,19 +147,21 @@ of 16 documents (valid, malformed, duplicate keys, escapes, `U+2028` and
 `U+2029`, large numbers, deep nesting, empty input) was masked under four
 redaction markers, together with `MaskAny`, `URL`, `URLString`, and `Headers`.
 Every output and every returned error was hashed by
-[`internal/outputdigest`](internal/outputdigest/main.go):
+[`internal/outputdigest`](internal/outputdigest/main.go). `MaskAny` results are
+hashed with their dynamic types, with and without `WithPreserveSafeTypes`, so
+a number that turns into a string changes the digest:
 
 | Go | SHA-256 of all outputs |
 |---|---|
-| 1.23.0 | `391071b9c7922b9f…188c27cd` |
-| 1.24.6 | `391071b9c7922b9f…188c27cd` |
-| 1.25.0 | `391071b9c7922b9f…188c27cd` |
-| 1.26.4 | `391071b9c7922b9f…188c27cd` |
-| 1.27.0 | `391071b9c7922b9f…188c27cd` |
+| 1.23.0 | `edf3fda6e1eebb30…9887bb59` |
+| 1.24.6 | `edf3fda6e1eebb30…9887bb59` |
+| 1.25.0 | `edf3fda6e1eebb30…9887bb59` |
+| 1.26.4 | `edf3fda6e1eebb30…9887bb59` |
+| 1.27.0 | `edf3fda6e1eebb30…9887bb59` |
 
 Identical on every version, including Go 1.27, which reimplemented
-`encoding/json`. The same command run against `2bf4fa7` gives the same digest,
-so the changes since then did not alter output for this corpus.
+`encoding/json`. Log output of `slogmask` is pinned separately, byte for byte,
+by the golden file `slogmask/testdata/golden.txt`.
 
 ## Caveats
 
