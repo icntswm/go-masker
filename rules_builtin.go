@@ -68,13 +68,38 @@ func builtinTagRules() map[string]Rule {
 // separator. A partial rule keeps part of its input verbatim, so an input that
 // holds one is malformed and is redacted in full instead.
 func controlRune(r rune) bool {
+	if r < utf8.RuneSelf {
+		// No ASCII character is a format or separator character, and the
+		// range tables below are costly enough to dominate a short value.
+		return r < 0x20 || r == 0x7f
+	}
 	return unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp)
+}
+
+// malformedEmail reports invalid UTF-8, a space, or a control rune, each of
+// which makes a value that is not an address to keep part of.
+func malformedEmail(value string) bool {
+	for index := 0; index < len(value); {
+		if char := value[index]; char < utf8.RuneSelf {
+			// The ASCII spaces and controls are exactly these bytes.
+			if char <= ' ' || char == 0x7f {
+				return true
+			}
+			index++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(value[index:])
+		if r == utf8.RuneError && size == 1 || unicode.IsSpace(r) || controlRune(r) {
+			return true
+		}
+		index += size
+	}
+	return false
 }
 
 func maskEmail(input RuleInput) string {
 	value := input.Value
-	if !utf8.ValidString(value) || strings.IndexFunc(value, unicode.IsSpace) >= 0 ||
-		strings.IndexFunc(value, controlRune) >= 0 {
+	if malformedEmail(value) {
 		return input.Redaction
 	}
 	at := strings.IndexByte(value, '@')

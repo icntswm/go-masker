@@ -316,8 +316,18 @@ func TestPartialRulesRedactControlCharacters(t *testing.T) {
 		{IDRule(), "SECRET\nPWN!", DefaultRedactionMarker},
 		{IDRule(), "SECRET\u2028PWN!", DefaultRedactionMarker},
 		{IDRule(), "SECRET\x00PWN!", DefaultRedactionMarker},
+		{EmailRule(), "a@example.com\x7f", DefaultRedactionMarker},
+		{EmailRule(), "a@example.com\t", DefaultRedactionMarker},
+		{EmailRule(), "a\u00a0b@example.com", DefaultRedactionMarker},
+		{EmailRule(), "a\u0085b@example.com", DefaultRedactionMarker},
+		{EmailRule(), "a\u2029b@example.com", DefaultRedactionMarker},
+		{EmailRule(), "a\xffb@example.com", DefaultRedactionMarker},
+		{IDRule(), "SECRET\x7fPWN!", DefaultRedactionMarker},
 		{EmailRule(), "alice@example.com", "a***@example.com"},
+		{EmailRule(), "\u00e9lise@example.com", "\u00e9***@example.com"},
+		{EmailRule(), "\ufffd@example.com", "\ufffd***@example.com"},
 		{IDRule(), "user 8891", "**** 8891"},
+		{IDRule(), "\u00e9t\u00e9-8891", "****8891"},
 	} {
 		got, err := m.MaskString(tc.value, tc.rule)
 		if err != nil {

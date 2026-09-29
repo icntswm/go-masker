@@ -69,6 +69,13 @@ func Find(s string, set Set) (spans []Span, pairs []Pair) {
 func scan[T ~string | ~[]byte](s T, set Set, first bool) (spans []Span, pairs []Pair, found bool) {
 	var run valueRun
 	for index := 0; index < len(s); {
+		if index > 0 && isLetter(s[index]) && isAlnum(s[index-1]) {
+			// Every detector that starts at a letter needs a boundary before
+			// it, and each boundary class contains the letters and digits, so
+			// the inside of a word is skipped without calling them.
+			index++
+			continue
+		}
 		if span, ok := matchSpan(s, index, set); ok {
 			if first {
 				return nil, nil, true
