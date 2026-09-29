@@ -13,6 +13,12 @@ updates:
       prefix: ci
     labels:
       - ci
+    # init and analyze must run the same release, and a separate pull
+    # request for each fails CI until both land.
+    groups:
+      codeql-action:
+        patterns:
+          - github/codeql-action*
 
   # Tests zerologmask against the real zerolog. The nested module is outside
   # the published library, which itself keeps no third-party dependency.
