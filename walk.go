@@ -23,8 +23,11 @@ type walker struct {
 	pathStack    []pathSegment
 	nodes        int
 	indirections int
-	errs         []*MaskError
-	stop         bool
+	// bytes counts the byte-slice and json.RawMessage content this operation
+	// has encoded or decoded, against the input byte limit.
+	bytes int64
+	errs  []*MaskError
+	stop  bool
 }
 
 // pathSegment names one position on the walker's path stack: a key read from
@@ -264,7 +267,9 @@ func (w *walker) dispatch(node walkNode, depth int) any {
 		if !ok {
 			return w.masker.cfg.markerAny
 		}
-		if w.masker.inspectable(text) {
+		// A byte slice was inspected as raw text before it was encoded; its
+		// base64 form is not text to inspect.
+		if implementsTextMarshaler(value) && w.masker.inspectable(text) {
 			if masked, changed := w.inspect(text, field, depth); changed {
 				return masked
 			}
@@ -306,15 +311,15 @@ var rawMessageType = reflect.TypeFor[json.RawMessage]()
 // by its keys like any other map or slice. Base64 would hide nothing: it is
 // reversible, and encoding/json would log the document itself. A nil message
 // encodes as null; one that is not a single valid JSON value fails closed. The
-// document is charged one node per byte before it is decoded, as a byte slice
-// is before it is encoded.
+// document is charged against the byte budget before it is decoded, as a byte
+// slice is before it is encoded.
 func (w *walker) decodeRawMessage(value reflect.Value, field Field, depth int) (any, bool) {
 	if value.IsNil() {
 		return nil, true
 	}
 	data := value.Bytes()
-	if !w.chargeCopy(len(data)) {
-		w.fail(CodeNodeLimit, field, depth)
+	if !w.chargeBytes(len(data)) {
+		w.fail(CodeInputLimit, field, depth)
 		return nil, false
 	}
 	if !utf8.Valid(data) {
@@ -333,6 +338,30 @@ func (w *walker) decodeRawMessage(value reflect.Value, field Field, depth int) (
 		return nil, false
 	}
 	return decoded, true
+}
+
+// chargeBytes spends count bytes of the operation's byte budget, which is the
+// input byte limit, and reports whether it was available.
+func (w *walker) chargeBytes(count int) bool {
+	if int64(count) > w.masker.cfg.maxInputBytes-w.bytes {
+		return false
+	}
+	w.bytes += int64(count)
+	return true
+}
+
+// sensitiveBytes reports whether a byte slice read as UTF-8 text holds
+// something inspection would mask. Binary content is not text and is kept.
+func (w *walker) sensitiveBytes(raw []byte, field Field, depth int) bool {
+	if !w.masker.cfg.embedded && !w.masker.cfg.textDetectors || !utf8.Valid(raw) {
+		return false
+	}
+	text := string(raw)
+	if !w.masker.inspectable(text) {
+		return false
+	}
+	_, changed := w.inspect(text, field, depth)
+	return changed
 }
 
 // textMarshalerType is the encoding.TextMarshaler interface type, resolved
@@ -378,17 +407,25 @@ func byteSliceValue(value reflect.Value) bool {
 }
 
 // renderText renders a value textualValue accepted and records a failure.
-// MarshalText runs on an isolated copy of the value. A byte slice is charged
-// one node per byte before it is encoded, as it was when it was traversed
-// element by element, so its length cannot force a proportional allocation
-// past the node limit; copying a receiver is charged the same way.
+// MarshalText runs on an isolated copy of the value; copying a receiver is
+// charged one node per copied element.
+//
+// A byte slice is charged against the operation's byte budget before it is
+// encoded, so one slice aliased from many places cannot force an allocation
+// far past the input it came from. Its content is inspected as text first:
+// base64 hides nothing, since it is reversible, so a slice that holds a
+// secret or a document with one becomes the marker as a whole.
 func (w *walker) renderText(value reflect.Value, field Field, depth int) (string, bool) {
 	if !implementsTextMarshaler(value) {
-		if !w.chargeCopy(value.Len()) {
-			w.fail(CodeNodeLimit, field, depth)
+		raw := value.Bytes()
+		if !w.chargeBytes(len(raw)) {
+			w.fail(CodeInputLimit, field, depth)
 			return "", false
 		}
-		return base64.StdEncoding.EncodeToString(value.Bytes()), true
+		if w.sensitiveBytes(raw, field, depth) {
+			return w.masker.cfg.marker, true
+		}
+		return base64.StdEncoding.EncodeToString(raw), true
 	}
 	receiver, code, failDepth := w.isolatedReceiver(value, depth)
 	if code != "" {

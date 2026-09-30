@@ -8,6 +8,43 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+### Added
+
+- The default policy also recognizes `pwd`, `api_token`, `secret_key`,
+  `secret_access_key`, `aws_secret_access_key`, `private_token`, `otp`,
+  `x-api-token` and `x-access-token`.
+
+### Changed
+
+- A `[]byte` value is searched for secrets like a string when it holds valid
+  UTF-8 text, and becomes the marker when one is found. The content of the
+  byte slices and `json.RawMessage` values one operation encodes or decodes
+  is bounded by `WithMaxInputBytes`; past it the slice becomes the marker and
+  the operation reports `ErrInputLimit` instead of `ErrNodeLimit`.
+- The path of an embedded URL is searched by the text detectors, so a token
+  written into it, such as a JWT in a reset link, becomes the marker.
+  `httpmask` masks the request path the same way.
+- In a `key=value` pair of free text, a `,`, `;` or `&` ends the value only
+  when whitespace, the end of the text or another pair follows it, so
+  `password=foo,bar` no longer leaves `bar` behind.
+- A token after `Bearer` made only of lowercase letters is treated as a
+  credential once it is 20 characters or longer.
+- A string is read as a form only when every key is a plain name and no value
+  holds a raw `=`; text that fails the form grammar goes to the text
+  detectors, and a form in which nothing was masked is searched by them too.
+- Keys in the `Path` and `Field` of an error have credentials recognizable by
+  shape redacted before they are formatted.
+- `MaskJSONValue` pools its walker with the output buffer and allocates one
+  object less per call: a flat struct takes 128 bytes in 3 allocations
+  instead of 256 bytes in 4.
+
+### Fixed
+
+- The base64 form of a byte slice is no longer parsed as a form, which could
+  exhaust the node limit on large slices.
+- `jsonline` ends a record it replaced by the fallback with a newline, so a
+  split record no longer runs into the next one.
+
 ## [0.6.0] - 2026-09-30
 
 ### Added

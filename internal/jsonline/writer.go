@@ -39,7 +39,7 @@ type Writer struct {
 // {"message":"<marker>"} and never passes through. With opts.Diagnostics, a
 // key ending in Verbose, Causes or Error is decided as its base key too. Each Write must carry whole lines: a record split
 // across two calls is masked as two broken documents and both halves are
-// replaced. The result is safe for concurrent use when w is, because the
+// replaced, each on a line of its own. The result is safe for concurrent use when w is, because the
 // writer keeps no mutable state. Its Sync method flushes w when w has one.
 func New(w io.Writer, core *masker.Masker, opts Options) Writer {
 	r := Writer{out: w, core: core, mark: masker.DefaultRedactionMarker, opts: opts}
@@ -83,9 +83,12 @@ func (r Writer) Sync() error {
 	return nil
 }
 
-// mask returns the masked form of p, keeping its newline separators exactly:
-// every input line that ended in '\n' ends in '\n' in the result, and a final
-// line without one gets none.
+// mask returns the masked form of p, keeping its newline separators: every
+// input line that ended in '\n' ends in '\n' in the result, and a final line
+// without one gets none unless it was replaced by the fallback line. That one
+// is usually the first half of a record split across two Writes, and without
+// a newline the fallback written for the second half would join it on one
+// line, which no JSON-lines reader accepts.
 func (r Writer) mask(p []byte) []byte {
 	// The fast path covers a logger that writes exactly one line per Write,
 	// such as zerolog: the masked line and its newline are one buffer and
@@ -107,7 +110,11 @@ func (r Writer) mask(p []byte) []byte {
 		if blank(line) {
 			result = append(result, line...)
 		} else {
-			result = append(result, r.line(line)...)
+			masked := r.line(line)
+			result = append(result, masked...)
+			if !terminated && bytes.Equal(masked, r.fallbackLine) {
+				return append(result, '\n')
+			}
 		}
 		if !terminated {
 			return result

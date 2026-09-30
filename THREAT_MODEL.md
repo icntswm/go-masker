@@ -9,7 +9,17 @@ cycle, callback panic, policy failure, or resource limit returns a safe root
 fallback and never returns the original input. Errors contain only categories,
 paths, field names, and the name of the rule that failed; callback error text
 is not propagated. Keys and paths reaching a message are escaped, because they
-come from the document being masked.
+come from the document being masked, and whatever the text detectors find in
+them, such as a `password=...` pair or a token used as a map key, is replaced
+by the marker.
+
+Keys are never masked in the output itself: a document keeps its shape, so a
+secret used as a map key is logged. A struct field is decided by the name it
+is written under, its JSON tag name when it has one, so a field renamed to a
+key the policy does not know is not masked by the policy; the `mask` struct
+tag covers it. An `error` value is walked like any other value, as
+`encoding/json` would encode it: most errors have no exported fields and are
+written as `{}`, so their message is lost rather than logged.
 
 The implementation bounds reflection depth, visited nodes, operation-wide
 pointer dereferences, and JSON input bytes. The pointer indirection ceiling is
@@ -36,9 +46,12 @@ the root fallback.
 Inputs are never mutated and output containers do not alias source containers.
 Reflection map and slice result capacity is capped by the remaining node budget
 before traversal, so an attacker-controlled container length cannot force a
-proportional output preallocation before the node limit is checked. A byte
-slice rendered as base64 is charged one node per byte before it is encoded,
-and the copy a `MarshalText` receiver runs on is charged one node per copied
+proportional output preallocation before the node limit is checked. The
+content of every byte slice rendered as base64 and every `json.RawMessage`
+decoded in one operation is charged against the input byte limit before it is
+encoded or decoded, so a slice aliased from many places cannot multiply the
+output. A byte slice that is valid UTF-8 is inspected as text first, and one
+that holds a secret becomes the marker as a whole. The copy a `MarshalText` receiver runs on is charged one node per copied
 slice element and element of a fixed-size array before it is made, and its
 slices count toward the depth limit. Only receivers without pointers or maps
 are copied; any other marshaler is walked like an ordinary value. `MarshalText` never sees
@@ -95,17 +108,25 @@ A string that is not a whole document is searched by text detectors: pairs
 such as `password=...` or `token: "..."`, whose key the policy judges under
 `SourceText`, and secrets with a recognizable shape — a `Bearer`/`Basic`
 credential, a PEM private key body, a JWT, provider tokens with a documented
-prefix, and URL userinfo inside a sentence. This is a heuristic safety net: a
-secret with neither a key nor a known shape, a key the policy does not know,
-or a value split by an unusual separator is not recognized, and a harmless
-value that happens to follow a sensitive key is masked. Card numbers and AWS
+prefix, and URL userinfo inside a sentence. An unquoted value runs to white
+space or closing punctuation; a ',', ';' or '&' ends it only before white
+space, the end of the text or the next `key=` pair, so a password containing
+one is masked whole. This is a heuristic safety net: a secret with neither a
+key nor a known shape, a key the policy does not know, or an unquoted value
+with a space in it is not recognized in full, and a harmless value that
+happens to follow a sensitive key is masked. Card numbers and AWS
 key ids are detected only on request, because ordinary numbers and
 identifiers match them by chance. `WithoutTextDetectors()` turns the detectors
 off, and `WithoutValueInspection()` turns off every inspection of string
 content.
 
-URLs preserve paths by default for compatibility. Userinfo is always redacted,
-and so is the fragment unless the caller asks the HTTP adapter to keep it.
+URLs preserve paths by default for compatibility. Inside a masked value the
+path is still searched by the text detectors, so a token written into it,
+such as a JWT in a reset link, is replaced by the marker; `httpmask` does
+the same for a request path. No policy judges a path, which has no key, so a
+custom policy cannot mask it whole. Userinfo is always
+redacted, and so is the fragment unless the caller asks the HTTP adapter to
+keep it.
 Cookie and Set-Cookie headers are always fully redacted.
 
 `WithPreserveSafeTypes` retains safe primitive types but does not preserve

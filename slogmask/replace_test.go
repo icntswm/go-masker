@@ -473,3 +473,22 @@ func TestReplaceAttrMasksEmbeddedURL(t *testing.T) {
 		t.Fatalf("url: %#v", record["url"])
 	}
 }
+
+// TestReplaceAttrInspectsByteSlices checks that a byte slice holding a secret
+// as text is not logged as its reversible base64 form.
+func TestReplaceAttrInspectsByteSlices(t *testing.T) {
+	core := newCore(t)
+	line, record := logRecord(t, core,
+		slog.Any("body", []byte("password=dummy-password")),
+		slog.Any("raw", []byte("hi")),
+	)
+	if strings.Contains(line, "cGFzc3dvcmQ9ZHVtbXktcGFzc3dvcmQ=") {
+		t.Fatalf("a secret reached the log as base64: %s", line)
+	}
+	if record["body"] != masker.DefaultRedactionMarker {
+		t.Fatalf("body: %#v", record["body"])
+	}
+	if record["raw"] != "aGk=" {
+		t.Fatalf("raw: %#v", record["raw"])
+	}
+}

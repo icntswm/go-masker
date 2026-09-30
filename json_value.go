@@ -30,9 +30,9 @@ func (m *Masker) MaskJSONValue(value any) (result []byte, err error) {
 			err = maskError(CodePanic, "mask", "$")
 		}
 	}()
-	w := &walker{masker: m, rootPath: "$"}
-	e := getJSONValueEmitter(w)
+	e := getJSONValueEmitter(m)
 	defer putJSONValueEmitter(e)
+	w := e.w
 	if e.emit(reflect.ValueOf(value), Field{Path: "$", Source: SourceAny}, 0, "") {
 		// An omitted root is null, as in MaskAny.
 		e.enc.buf = append(e.enc.buf[:0], "null"...)
@@ -56,12 +56,13 @@ const maxPooledScratch = 1 << 14
 
 var jsonValueEmitters = sync.Pool{New: func() any { return new(jsonValueEmitter) }}
 
-func getJSONValueEmitter(w *walker) *jsonValueEmitter {
+func getJSONValueEmitter(m *Masker) *jsonValueEmitter {
 	e, ok := jsonValueEmitters.Get().(*jsonValueEmitter)
 	if !ok {
 		e = new(jsonValueEmitter)
 	}
-	e.w = w
+	e.walker = walker{masker: m, rootPath: "$"}
+	e.w = &e.walker
 	e.enc.buf = e.enc.buf[:0]
 	return e
 }
@@ -71,6 +72,7 @@ func getJSONValueEmitter(w *walker) *jsonValueEmitter {
 // pooled emitter must pin no caller data.
 func putJSONValueEmitter(e *jsonValueEmitter) {
 	e.w = nil
+	e.walker = walker{}
 	for i := range e.entries {
 		if cap(e.entries[i]) > maxPooledScratch {
 			e.entries[i] = nil
@@ -97,7 +99,11 @@ func putJSONValueEmitter(e *jsonValueEmitter) {
 // shape is rendered directly, so no map[string]any or []any tree is built
 // for encoding/json to walk a second time.
 type jsonValueEmitter struct {
-	w       *walker
+	w *walker
+	// walker is the storage w points to, pooled with the emitter so a call
+	// does not allocate one. Its slices start empty on every call: the errors
+	// it collects escape in the returned error.
+	walker  walker
 	enc     jsonTreeEncoder
 	entries [][]mapEntry
 }
@@ -122,7 +128,7 @@ func (e *jsonValueEmitter) emit(value reflect.Value, field Field, depth int, tag
 			e.enc.buf = appendJSONString(e.enc.buf, e.w.masker.cfg.marker)
 			return false
 		}
-		if e.w.masker.inspectable(text) {
+		if implementsTextMarshaler(node.value) && e.w.masker.inspectable(text) {
 			if masked, changed := e.w.inspect(text, node.field, depth); changed {
 				e.w.releaseTracked(node.trackedStart)
 				e.enc.buf = appendJSONString(e.enc.buf, masked)

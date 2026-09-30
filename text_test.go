@@ -113,6 +113,26 @@ var textCases = []struct {
 		want:  "key [REDACTED]",
 	},
 	{
+		name:  "separator inside a password",
+		value: "login failed: password=dummy;pass,word",
+		want:  "login failed: password=[REDACTED]",
+	},
+	{
+		name:  "pair list separated by commas",
+		value: "user=alice,password=dummy,role=admin",
+		want:  "user=alice,password=[REDACTED],role=admin",
+	},
+	{
+		name:  "relative URL",
+		value: "/cb?token=dummy-token",
+		want:  "/cb?token=[REDACTED]",
+	},
+	{
+		name:  "api_token pair",
+		value: "retry with api_token=dummy",
+		want:  "retry with api_token=[REDACTED]",
+	},
+	{
 		name:  "without text detectors",
 		opts:  []Option{WithoutTextDetectors()},
 		value: "login failed: password=dummy-pass, Bearer dummy-token-placeholder",

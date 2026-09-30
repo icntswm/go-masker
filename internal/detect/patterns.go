@@ -1,8 +1,10 @@
 package detect
 
 // matchBearer finds the credential after an HTTP authentication scheme
-// written in text: "Bearer <token>" or "Basic <token>". A token of lowercase
-// letters only is prose ("bearer of news"), not a credential.
+// written in text: "Bearer <token>" or "Basic <token>". A short token of
+// lowercase letters only is prose ("basic understanding"), not a credential;
+// from minLowerToken letters on, no English word is that long, and an opaque
+// token of lowercase letters is kept from the log.
 func matchBearer[T ~string | ~[]byte](s T, index int) (Span, bool) {
 	if !boundedBefore(s, index, isWord) {
 		return Span{}, false
@@ -30,6 +32,9 @@ func matchBearer[T ~string | ~[]byte](s T, index int) (Span, bool) {
 	if end-start < 8 {
 		return Span{}, false
 	}
+	if end-start >= minLowerToken {
+		return Span{start, end, KindBearer}, true
+	}
 	for offset := start; offset < end; offset++ {
 		if char := s[offset]; char < 'a' || char > 'z' {
 			return Span{start, end, KindBearer}, true
@@ -37,6 +42,10 @@ func matchBearer[T ~string | ~[]byte](s T, index int) (Span, bool) {
 	}
 	return Span{}, false
 }
+
+// minLowerToken is the length from which a token of lowercase letters after
+// an authentication scheme counts as a credential.
+const minLowerToken = 20
 
 // matchPEM finds the body of a PEM private key block. The BEGIN and END
 // lines stay visible; a block cut off before its END line is masked to the
@@ -335,7 +344,7 @@ func matchPair[T ~string | ~[]byte](s T, index int, run *valueRun) (Pair, bool) 
 	}
 	valueEnd := run.end
 	if valueStart < run.start || valueStart >= run.end {
-		valueEnd = runEnd(s, valueStart, isValueChar)
+		valueEnd = valueRunEnd(s, valueStart)
 		*run = valueRun{valueStart, valueEnd}
 	}
 	if valueEnd == valueStart {
@@ -344,7 +353,7 @@ func matchPair[T ~string | ~[]byte](s T, index int, run *valueRun) (Pair, bool) 
 	if isSchemeWord(s, valueStart, valueEnd) {
 		credential := skipBlanks(s, valueEnd)
 		if credential > valueEnd {
-			if credentialEnd := runEnd(s, credential, isValueChar); credentialEnd > credential {
+			if credentialEnd := valueRunEnd(s, credential); credentialEnd > credential {
 				valueEnd = credentialEnd
 			}
 		}
@@ -400,6 +409,40 @@ func isValueChar(char byte) bool {
 		return false
 	}
 	return !isSpace(char)
+}
+
+// valueRunEnd measures an unquoted value. A separator (',', ';' or '&') ends
+// it only where a value can end: at the end of the text, before white space,
+// or before the next key=value pair, as in "a=1,b=2". Anywhere else the
+// separator is part of the value, so "password=p@ss;word" is masked whole
+// instead of leaving the tail of the password in the log.
+func valueRunEnd[T ~string | ~[]byte](s T, index int) int {
+	for {
+		index = runEnd(s, index, isValueChar)
+		if index >= len(s) || !isSeparator(s[index]) || !separatorContinues(s, index+1) {
+			return index
+		}
+		index++
+	}
+}
+
+func isSeparator(char byte) bool {
+	return char == ',' || char == ';' || char == '&'
+}
+
+// separatorContinues reports whether the byte after a separator at index-1
+// carries the value on: it is a value byte and does not start a key=value
+// pair. A key followed by '=' ends the value; the key run is bounded, so the
+// look-ahead keeps scanning linear.
+func separatorContinues[T ~string | ~[]byte](s T, index int) bool {
+	if index >= len(s) || !isValueChar(s[index]) && !isSeparator(s[index]) {
+		return false
+	}
+	if !isKeyStart(s[index]) {
+		return true
+	}
+	keyEnd := keyRunEnd(s, index)
+	return keyEnd-index > maxKeyLen || keyEnd >= len(s) || s[keyEnd] != '='
 }
 
 func isSchemeWord[T ~string | ~[]byte](s T, start, end int) bool {

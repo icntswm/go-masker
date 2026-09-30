@@ -30,6 +30,33 @@ func init() {
 		m, ok := core.(*Masker)
 		return ok && m.cfg.preserveSafe
 	}
+	adapter.Text = func(core any, path, text string) (string, error) {
+		m, ok := core.(*Masker)
+		if !ok {
+			return DefaultRedactionMarker, maskError(CodeInvalidConfig, "mask", path)
+		}
+		return m.adapterFreeText(path, text)
+	}
+}
+
+// adapterFreeText inspects text that has no key, as the walkers inspect a
+// string no rule masks. A text that holds no candidate is not parsed.
+func (m *Masker) adapterFreeText(path, text string) (string, error) {
+	if !utf8.ValidString(text) {
+		return m.cfg.marker, maskError(CodeInvalidUTF8, "mask", path)
+	}
+	if !m.inspectable(text) {
+		return text, nil
+	}
+	nodes := 1
+	var errs []*MaskError
+	var stop bool
+	field := Field{Path: path, Source: SourceText, Kind: KindString}
+	masked, _ := m.inspectString(text, field, 0, inspectState{nodes: &nodes, errs: &errs, stop: &stop})
+	if err := aggregateErrors(errs); err != nil {
+		return m.cfg.marker, err
+	}
+	return masked, nil
 }
 
 // adapterPath builds the field path of an attribute inside groups, the way

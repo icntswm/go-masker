@@ -7,7 +7,7 @@
 | Hardware | Apple M3 Pro, darwin/arm64 |
 | Go | go1.23.1 (cross-version results in [Verified Go versions](#verified-go-versions)) |
 | Date | 2026-09-30 |
-| Benchmark revision | `v0.6.0`; rows for code unchanged since `v0.5.0` were measured there |
+| Benchmark revision | unreleased for the `MaskJSONValue` and `httpmask` rows and the matrix; other rows `v0.6.0`, re-checked against it with no significant change |
 | Verification revision | `v0.6.0` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
@@ -37,13 +37,13 @@ for capacity planning.
 | `MaskAny`, nested/tagged struct | 1,480 | 1,800 | 20 |
 | `MaskAny` + `json.Marshal`, nested/tagged struct | 2,828 | 2,602 | 42 |
 | `MaskAny`, nested map | 277,628 | 156,682 | 3,818 |
-| `MaskJSONValue`, flat struct | 350.9 | 256 | 4 |
-| `MaskJSONValue`, wide struct | 1,294 | 560 | 4 |
-| `MaskJSONValue`, nested/tagged struct | 1,402 | 1,032 | 14 |
-| `MaskJSONValue`, nested map | 260,908 | 65,637 | 2,716 |
+| `MaskJSONValue`, flat struct | 320.0 | 128 | 3 |
+| `MaskJSONValue`, wide struct | 1,249 | 432 | 3 |
+| `MaskJSONValue`, nested/tagged struct | 1,361 | 904 | 13 |
+| `MaskJSONValue`, nested map | 259,546 | 65,460 | 2,715 |
 | `MaskJSON`, strings holding a URL and a JSON body | 2,401 | 1,569 | 35 |
-| `httpmask.Headers`, mixed set | 2,172 | 1,072 | 35 |
-| `httpmask.URL`, query | 1,404 | 848 | 25 |
+| `httpmask.Headers`, mixed set | 2,232 | 1,072 | 35 |
+| `httpmask.URL`, query | 1,562 | 848 | 25 |
 
 Flat and wide structs use the specialized scalar-struct path with compiled
 field metadata. A struct that also holds nested values takes the same path for
@@ -51,10 +51,14 @@ each of its scalar fields and pays the general reflection walker only for the
 rest. `MaskJSONValue` makes the same decisions but writes JSON as it goes
 instead of building `map[string]any` and `[]any` for `encoding/json` to walk
 again, so masking a struct and encoding it costs half as much as `MaskAny`
-followed by `json.Marshal`, with a third of the allocations. A string
+followed by `json.Marshal`, with a third of the allocations; its walker is
+pooled with the output buffer. A string
 that no rule masks is inspected for embedded documents and secrets inside
 text, which is most of the cost of the scalar rows without a rule; the scan
 skips the inside of each word, so it stays linear and cheap on ordinary text.
+`httpmask.URL` pays that scan once more for the path, about 150 ns for the
+benchmark URL and no allocation when the path holds nothing to mask; a URL
+inside a string value pays it the same way.
 
 ## Logger adapters
 
@@ -127,10 +131,10 @@ same scenarios as benchmarks to add the timing dimension.
 
 | Area | Cases | Median ns/op | Min | Max | Median B/op | Median allocs/op |
 |---|---:|---:|---:|---:|---:|---:|
-| JSON | 158 | 71,564 | 59 | 54,039,958 | 18,708 | 111 |
-| Reflection (`MaskAny`) | 40 | 3,320 | 23 | 72,784 | 2,614 | 48 |
-| URL | 37 | 1,018 | 135 | 16,128,958 | 496 | 14 |
-| HTTP headers | 25 | 1,113 | 527 | 23,227 | 720 | 18 |
+| JSON | 158 | 71,893 | 59 | 53,779,166 | 18,708 | 111 |
+| Reflection (`MaskAny`) | 40 | 3,331 | 31 | 73,794 | 2,530 | 44 |
+| URL | 37 | 1,071 | 129 | 16,134,750 | 496 | 14 |
+| HTTP headers | 25 | 1,103 | 531 | 24,185 | 720 | 18 |
 
 The wide spread is expected: each area varies input size across several orders
 of magnitude, from a single field to 10,000 records.

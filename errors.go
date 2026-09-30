@@ -3,9 +3,12 @@ package masker
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/icntswm/go-masker/internal/detect"
 )
 
 // ErrorCode identifies a safe, non-sensitive masking failure category.
@@ -183,6 +186,7 @@ func safeDiagnostic(value string) string {
 	if value == "" {
 		return ""
 	}
+	value = redactDiagnostic(value)
 	// Truncate before escaping, never after: cutting quoted text can slice an
 	// escape sequence in half or drop the closing quote, which is the kind of
 	// malformed value the escaping exists to prevent. Cut on a rune boundary
@@ -202,6 +206,49 @@ func safeDiagnostic(value string) string {
 		value += "...(truncated)"
 	}
 	return value
+}
+
+// diagnosticDetectors are the detectors a diagnostic runs regardless of the
+// Masker's options: an error carries no configuration, and a diagnostic has
+// no reason to show a card number or an AWS key id.
+var diagnosticDetectors = detect.Set{Cards: true, AWSKeyIDs: true}
+
+// redactDiagnostic replaces what the text detectors find in a key or path:
+// a key such as "password=hunter2" or a token used as a map key would
+// otherwise reach the log through the error that names it. Every span and
+// every pair value becomes the default marker, whatever the policy says;
+// the policy is not consulted, since a diagnostic must not fail.
+func redactDiagnostic(value string) string {
+	if !detect.Candidate(value, diagnosticDetectors) {
+		return value
+	}
+	spans, pairs := detect.Find(value, diagnosticDetectors)
+	edits := make([][2]int, 0, len(spans)+len(pairs))
+	for _, span := range spans {
+		edits = append(edits, [2]int{span.Start, span.End})
+	}
+	for _, pair := range pairs {
+		edits = append(edits, [2]int{pair.ValueStart, pair.ValueEnd})
+	}
+	// The outermost edit wins an overlap, as in inspectText.
+	slices.SortFunc(edits, func(a, b [2]int) int {
+		if a[0] != b[0] {
+			return a[0] - b[0]
+		}
+		return b[1] - a[1]
+	})
+	var out strings.Builder
+	last := 0
+	for _, edit := range edits {
+		if edit[0] < last {
+			continue
+		}
+		out.WriteString(value[last:edit[0]])
+		out.WriteString(DefaultRedactionMarker)
+		last = edit[1]
+	}
+	out.WriteString(value[last:])
+	return out.String()
 }
 
 // needsQuoting reports whether strconv.Quote would rewrite the value.

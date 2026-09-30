@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/icntswm/go-masker"
+	"github.com/icntswm/go-masker/internal/adapter"
 	"github.com/icntswm/go-masker/internal/urlquery"
 )
 
@@ -129,6 +130,9 @@ func (a *Adapter) maskURL(result *url.URL) error {
 	if result.User != nil {
 		result.User = url.User(a.marker())
 	}
+	if err := a.maskPath(result); err != nil {
+		return err
+	}
 
 	if result.RawQuery == "" {
 		a.maskFragment(result)
@@ -141,6 +145,25 @@ func (a *Adapter) maskURL(result *url.URL) error {
 	}
 	result.RawQuery = query
 	a.maskFragment(result)
+	return nil
+}
+
+// maskPath searches the path with the core's embedded document checks and
+// text detectors, so a token written into it, such as a JWT in a reset link,
+// does not reach the log. No policy judges the path, which has no key, and
+// the rest of it is kept.
+func (a *Adapter) maskPath(result *url.URL) error {
+	if result.Path == "" {
+		return nil
+	}
+	path, err := adapter.Text(a.core, "$.path", result.Path)
+	if err != nil {
+		return err
+	}
+	if path != result.Path {
+		result.Path = path
+		result.RawPath = ""
+	}
 	return nil
 }
 

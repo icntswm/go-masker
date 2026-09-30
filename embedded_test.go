@@ -75,6 +75,21 @@ func TestEmbeddedURLStrings(t *testing.T) {
 			want:  "https://%5BREDACTED%5D@host/cb?token=%5BREDACTED%5D",
 		},
 		{
+			name:  "token in the path",
+			value: "https://host/v1/reset/" + textDummyJWT + "?user=alice",
+			want:  "https://host/v1/reset/[REDACTED]?user=alice",
+		},
+		{
+			name:  "provider token in the path next to a masked query",
+			value: "https://host/x/" + textDummyGitHub + "?token=dummy-token",
+			want:  "https://host/x/[REDACTED]?token=%5BREDACTED%5D",
+		},
+		{
+			name:  "harmless path keeps its bytes",
+			value: "https://host/api/v1/orders/42",
+			want:  "https://host/api/v1/orders/42",
+		},
+		{
 			name:  "sensitive query parameter",
 			value: "https://host/cb?token=dummy-token",
 			want:  "https://host/cb?token=%5BREDACTED%5D",
@@ -104,14 +119,14 @@ func TestEmbeddedURLStrings(t *testing.T) {
 			want:  "https://host/cb?redirect_uri=https%3A%2F%2F%255BREDACTED%255D%40h%2F",
 		},
 		{
-			name:  "relative URL is not a URL",
+			name:  "relative URL is text, and its pair is still masked",
 			value: "/cb?token=dummy-token",
-			want:  "/cb?token=dummy-token",
+			want:  "/cb?token=[REDACTED]",
 		},
 		{
-			name:  "mailto URL is not a URL",
+			name:  "mailto URL is text, and its pair is still masked",
 			value: "mailto:alice@example.com?token=dummy",
-			want:  "mailto:alice@example.com?token=dummy",
+			want:  "mailto:alice@example.com?token=[REDACTED]",
 		},
 		{
 			// Prose is not parsed as a URL; the text detectors still find the

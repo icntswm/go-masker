@@ -263,13 +263,13 @@ func (p *KeyPolicy) decideASCII(key string) (Decision, bool) {
 }
 
 var defaultBindings = []Binding{
-	{Keys: []string{"password", "passwd", "passphrase"}, Rule: PasswordRule()},
-	{Keys: []string{"token", "access_token", "refresh_token", "api_key", "apikey", "secret", "client_secret", "id_token", "private_key", "session_id", "credentials", "auth_token"}, Rule: TokenRule()},
+	{Keys: []string{"password", "passwd", "passphrase", "pwd"}, Rule: PasswordRule()},
+	{Keys: []string{"token", "access_token", "refresh_token", "api_key", "apikey", "api_token", "secret", "client_secret", "secret_key", "secret_access_key", "aws_secret_access_key", "id_token", "private_key", "private_token", "session_id", "credentials", "auth_token", "otp"}, Rule: TokenRule()},
 	{Keys: []string{"email", "e-mail"}, Rule: EmailRule()},
 	{Keys: []string{"phone", "phone_number", "mobile"}, Rule: PhoneRule()},
 	{Keys: []string{"id", "user_id", "customer_id"}, Rule: IDRule()},
 	{Keys: []string{"card", "card_number", "pan"}, Rule: CardRule()},
-	{Keys: []string{"authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token", "proxy-authorization", "x-csrf-token", "cvv", "cvc"}, Rule: FullRule()},
+	{Keys: []string{"authorization", "cookie", "set-cookie", "x-api-key", "x-api-token", "x-access-token", "x-auth-token", "proxy-authorization", "x-csrf-token", "cvv", "cvc"}, Rule: FullRule()},
 }
 
 // DefaultBindings returns a defensive copy of the built-in key policy.

@@ -25,4 +25,8 @@ var (
 	Group func(core any, groups []string) Action
 	// PreservesTypes reports whether the core was built with WithPreserveSafeTypes.
 	PreservesTypes func(core any) bool
+	// Text masks free text that no key names, such as a URL path, with the
+	// core's embedded document checks and text detectors; no policy judges
+	// it. Text with nothing to mask is returned as it is, without allocating.
+	Text func(core any, path, text string) (string, error)
 )

@@ -157,13 +157,13 @@ binding. Its default bindings are:
 
 | Keys | Rule |
 | --- | --- |
-| `password`, `passwd`, `passphrase` | full |
-| `token`, `access_token`, `refresh_token`, `api_key`, `apikey`, `secret`, `client_secret`, `id_token`, `private_key`, `session_id`, `credentials`, `auth_token` | token |
+| `password`, `passwd`, `passphrase`, `pwd` | full |
+| `token`, `access_token`, `refresh_token`, `api_key`, `apikey`, `api_token`, `secret`, `client_secret`, `secret_key`, `secret_access_key`, `aws_secret_access_key`, `id_token`, `private_key`, `private_token`, `session_id`, `credentials`, `auth_token`, `otp` | token |
 | `email`, `e-mail` | email |
 | `phone`, `phone_number`, `mobile` | phone |
 | `id`, `user_id`, `customer_id` | ID |
 | `card`, `card_number`, `pan` | card |
-| `authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `proxy-authorization`, `x-csrf-token`, `cvv`, `cvc` | full |
+| `authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-api-token`, `x-access-token`, `x-auth-token`, `proxy-authorization`, `x-csrf-token`, `cvv`, `cvc` | full |
 
 Built-in rules are available directly through `PasswordRule`, `TokenRule`,
 `FullRule`, `EmailRule`, `PhoneRule`, `IDRule`, and `CardRule`.

@@ -120,8 +120,15 @@ func (m *Masker) inspectString(s string, field Field, depth int, state inspectSt
 		if masked, changed, ok := m.inspectJSON(s, field, depth, state); ok {
 			return masked, changed
 		}
-		if masked, changed, ok := m.inspectForm(s, field, depth, state); ok {
+		// A form the policy leaves whole is still read as text: its grammar
+		// splits only on '&' and the first '=', so "user=bob,password=x" is
+		// one member named user, and only the text detectors see the
+		// password pair inside its value.
+		if masked, changed, ok := m.inspectForm(s, field, depth, state); ok && (changed || !m.cfg.textDetectors) {
 			return masked, changed
+		}
+		if *state.stop {
+			return m.cfg.marker, true
 		}
 	}
 	if m.cfg.textDetectors {
@@ -184,10 +191,29 @@ func (m *Masker) inspectURL(s string, field Field, depth int, state inspectState
 		}
 		result.RawQuery = query
 	}
-	if !changed {
+	// The path is text like any other: a token or a key=value pair written
+	// into it is masked by the text detectors, as it would be if the URL sat
+	// inside a sentence. The masked path is spliced in as written, since
+	// escaping the marker would only obscure it.
+	path, pathChanged := "", false
+	if m.cfg.textDetectors {
+		escaped := parsed.EscapedPath()
+		if detect.Candidate(escaped, m.cfg.detectSet) {
+			path, pathChanged = m.inspectText(escaped, field, depth, state)
+			if *state.stop {
+				return m.cfg.marker, true, true
+			}
+		}
+	}
+	if !changed && !pathChanged {
 		return s, false, true
 	}
-	return result.String(), true, true
+	if !pathChanged {
+		return result.String(), true, true
+	}
+	head := url.URL{Scheme: result.Scheme, User: result.User, Host: result.Host}
+	tail := url.URL{RawQuery: result.RawQuery, ForceQuery: result.ForceQuery, Fragment: result.Fragment, RawFragment: result.RawFragment}
+	return head.String() + path + tail.String(), true, true
 }
 
 func (m *Masker) inspectJSON(s string, field Field, depth int, state inspectState) (string, bool, bool) {
@@ -345,10 +371,13 @@ func (m *Masker) decideMember(member Field, value string, depth int, state inspe
 	return result, true, true
 }
 
-// strictFormText reports whether every '&'-separated part of s is a non-empty
-// "key=value" member with a non-empty, decodable key and value. The strict
-// grammar runs before urlquery.Mask, which skips malformed parts instead of
-// rejecting them.
+// strictFormText reports whether every '&'-separated part of s is a
+// "key=value" member with a non-empty key of form-key characters and a
+// decodable value without a raw '=', which an encoder always escapes. The strict grammar runs before urlquery.Mask, which skips
+// malformed parts instead of rejecting them. The key grammar keeps text such
+// as "a,password=x" or "/cb?token=x" out of the form path: split at its first
+// '=', it would yield a key no policy recognizes and hide the pair inside it
+// from the text detectors.
 func strictFormText(s string) bool {
 	for index := range len(s) {
 		char := s[index]
@@ -363,13 +392,29 @@ func strictFormText(s string) bool {
 			return false
 		}
 		key, value, ok := strings.Cut(part, "=")
-		if !ok || key == "" {
+		if !ok || key == "" || !formKey(key) || strings.IndexByte(value, '=') >= 0 {
 			return false
 		}
 		if _, err := url.QueryUnescape(key); err != nil {
 			return false
 		}
 		if _, err := url.QueryUnescape(value); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// formKey reports whether key is made of the bytes form keys use: letters,
+// digits, percent escapes, and the punctuation of names such as "user_id",
+// "filter[name]" or "a.b".
+func formKey(key string) bool {
+	for index := range len(key) {
+		char := key[index]
+		switch {
+		case isASCIILetter(char), char >= '0' && char <= '9':
+		case strings.IndexByte("_-.[]%+~*", char) >= 0:
+		default:
 			return false
 		}
 	}

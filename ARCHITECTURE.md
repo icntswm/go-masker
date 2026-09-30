@@ -68,6 +68,7 @@ go-masker/
 ├── ARCHITECTURE.md
 ├── Makefile
 ├── .golangci.yml
+├── adapter.go                # hooks the logger adapters reach through internal/adapter
 ├── doc.go
 ├── embedded.go
 ├── text.go
@@ -109,6 +110,7 @@ go-masker/
 ├── testdata/
 │   └── security_decisions/
 ├── internal/
+│   ├── adapter/              # hook table between the root package and slogmask
 │   ├── detect/               # secret detectors for free text
 │   ├── jsonline/             # line-masking engine of both writers
 │   ├── outputdigest/         # cross-version output digest
@@ -678,7 +680,7 @@ once a writer has received a prefix, a later parse error cannot retract a
 potentially unsafe operation. The logger writers do not break this rule. Each
 masks whole lines, each a complete document, and writes nothing of a line until the
 line is masked; a record split across two `Write` calls is replaced by the
-fallback line rather than buffered.
+fallback line rather than buffered, each half on a line of its own.
 
 ### 9.2 Known JSON limitations
 

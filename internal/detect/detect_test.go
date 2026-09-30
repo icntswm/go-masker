@@ -63,6 +63,7 @@ var detectCases = []struct {
 	{name: "bearer prose", text: "the bearer of information"},
 	{name: "basic prose", text: "a basic idea"},
 	{name: "bearer too short", text: "Bearer Dummy12"},
+	{name: "bearer long lowercase", text: "Bearer " + strings.Repeat("dummy", 5), spans: []string{strings.Repeat("dummy", 5)}},
 	{name: "bearer inside word", text: "xbearer DummyToken123"},
 	{name: "pem", text: "key " + dummyPEM(keyLabel, "\ndummy\n", true) + " done", spans: []string{"\ndummy\n"}},
 	{name: "pem cut off", text: dummyPEM(keyLabel, "\ndummy", false), spans: []string{"\ndummy"}},
@@ -121,6 +122,11 @@ var detectCases = []struct {
 	{name: "pair after slash", text: "/api/v1/orders?x"},
 	{name: "pair empty value", text: "password=; next"},
 	{name: "pair long key", text: strings.Repeat("k", 65) + "=v"},
+	{name: "pair separator inside value", text: "password=dummy;pass,word&x", pairs: [][2]string{{"password", "dummy;pass,word&x"}}},
+	{name: "pair separator before pair", text: "a=1,b=2;c=3", pairs: [][2]string{{"a", "1"}, {"b", "2"}, {"c", "3"}}},
+	{name: "pair separator before space", text: "password=dummy, next", pairs: [][2]string{{"password", "dummy"}}},
+	{name: "pair separator at end", text: "password=dummy;", pairs: [][2]string{{"password", "dummy"}}},
+	{name: "pair scheme credential with separator", text: "auth: Bearer dummy;token", pairs: [][2]string{{"auth", "Bearer dummy;token"}}},
 	{name: "plain", text: "GET /api/v1/orders 200 in 12ms at 2026-09-29T21:00:00Z"},
 }
 
@@ -208,7 +214,7 @@ func FuzzCandidateMatchesFind(f *testing.F) {
 func TestLinearOnRepeatedPatterns(t *testing.T) {
 	const n = 1 << 18
 	set := Set{Cards: true, AWSKeyIDs: true}
-	for _, unit := range []string{"a=", "a:", "1 ", "1-", "a://", "Bearer ", "eyJ", `a="`, "k" + strings.Repeat("0", 70) + "="} {
+	for _, unit := range []string{"a=", "a:", "1 ", "1-", "a://", "Bearer ", "eyJ", `a="`, "k" + strings.Repeat("0", 70) + "=", "a=x;", "x;", ";a", ",k" + strings.Repeat("0", 70)} {
 		text := strings.Repeat(unit, n/len(unit))
 		Find(text, set)
 		Candidate(text, set)

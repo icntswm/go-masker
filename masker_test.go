@@ -744,9 +744,9 @@ func TestRawMessageIsMaskedByKeys(t *testing.T) {
 		}
 	}
 
-	limited := newTestMasker(t, WithMaxNodes(8))
-	if _, err := limited.MaskAny(map[string]any{"body": json.RawMessage(`{"a":"0123456789"}`)}); !errors.Is(err, ErrNodeLimit) {
-		t.Fatalf("a large message was not charged against the node limit: %v", err)
+	limited := newTestMasker(t, WithMaxInputBytes(8))
+	if _, err := limited.MaskAny(map[string]any{"body": json.RawMessage(`{"a":"0123456789"}`)}); !errors.Is(err, ErrInputLimit) {
+		t.Fatalf("a large message was not charged against the byte limit: %v", err)
 	}
 }
 
@@ -1722,6 +1722,8 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 			// unquotes back to it. Anything else means the escaping mangled the
 			// value or let a delimiter through. A bare quote or backslash does
 			// not end a line, but it does end a logfmt value.
+			// A secret the text detectors find in the key is redacted first.
+			key := redactDiagnostic(testCase.key)
 			switch field := masked.Field; {
 			case strings.HasSuffix(field, "...(truncated)"):
 				// A truncated diagnostic must still be well formed: a cut that
@@ -1735,10 +1737,10 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 					}
 					body = unquoted
 				}
-				if !strings.HasPrefix(testCase.key, body) {
+				if !strings.HasPrefix(key, body) {
 					t.Fatalf("truncated diagnostic is not a prefix of the key: %q", body)
 				}
-			case field == testCase.key:
+			case field == key:
 				// A quote or backslash closes a value early; a space starts a
 				// new logfmt field. None may survive unquoted.
 				if strings.ContainsAny(field, "\"\\ ") {
@@ -1749,7 +1751,7 @@ func TestDiagnosticsAreSafeToLog(t *testing.T) {
 				if unquoteErr != nil {
 					t.Fatalf("diagnostic is neither verbatim nor quoted: %q", field)
 				}
-				if unquoted != testCase.key {
+				if unquoted != key {
 					t.Fatalf("quoted diagnostic does not round-trip: %q", field)
 				}
 			}
@@ -1927,12 +1929,24 @@ func TestTextMarshalerReviewCases(t *testing.T) {
 		t.Fatalf("byte-kind marshalers were base64-encoded: %#v", got)
 	}
 
-	limited, err := New(DefaultPolicy(), WithMaxNodes(16))
+	limited, err := New(DefaultPolicy(), WithMaxNodes(16), WithMaxInputBytes(1<<16))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := limited.MaskAny(map[string]any{"blob": make([]byte, 1<<20)}); !errors.Is(err, ErrNodeLimit) {
-		t.Fatalf("a large byte slice bypassed the node limit: %v", err)
+	if _, err := limited.MaskAny(map[string]any{"blob": make([]byte, 1<<20)}); !errors.Is(err, ErrInputLimit) {
+		t.Fatalf("a large byte slice bypassed the byte limit: %v", err)
+	}
+	// One slice aliased from many places is charged every time it is encoded.
+	shared := make([]byte, 1<<13)
+	aliases := map[string]any{}
+	for index := range 10 {
+		aliases[strconv.Itoa(index)] = shared
+	}
+	if _, err := limited.MaskAny(aliases); !errors.Is(err, ErrInputLimit) {
+		t.Fatalf("aliased byte slices bypassed the byte limit: %v", err)
+	}
+	if got, err := newTestMasker(t).MaskAny(map[string]any{"blob": make([]byte, 200<<10)}); err != nil || got.(map[string]any)["blob"] == DefaultRedactionMarker {
+		t.Fatalf("a 200 KiB byte slice failed under the default limits: %v", err)
 	}
 	if got, err := limited.MaskAny(map[string]any{"blob": []byte("hi")}); err != nil || got.(map[string]any)["blob"] != "aGk=" {
 		t.Fatalf("a small byte slice within the limit: %#v %v", got, err)
@@ -1958,13 +1972,13 @@ func TestTextMarshalerReviewCases(t *testing.T) {
 			return Decision{Rule: partial}, nil
 		}
 		return Decision{}, nil
-	}), WithMaxNodes(16))
+	}), WithMaxInputBytes(16))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = partialLimited.MaskAny(map[string]any{"a": map[string]any{"blob": make([]byte, 64)}})
 	var maskErr *MaskError
-	if !errors.As(err, &maskErr) || maskErr.Code != CodeNodeLimit || maskErr.Depth != 2 {
+	if !errors.As(err, &maskErr) || maskErr.Code != CodeInputLimit || maskErr.Depth != 2 {
 		t.Fatalf("ruled byte slice lost its depth: %#v", err)
 	}
 }
@@ -2197,6 +2211,87 @@ func TestStreamRuleErrorsKeepTheirPaths(t *testing.T) {
 	for i, path := range []string{"$[a][token]", "$[b][token]"} {
 		if multi.Items[i].Path != path {
 			t.Fatalf("error %d path = %q, want %q", i, multi.Items[i].Path, path)
+		}
+	}
+}
+
+// TestByteSliceContentIsInspected checks that base64 does not hide a secret:
+// a byte slice that holds one as text becomes the marker in every walker,
+// while binary content and harmless text keep their base64 form.
+func TestByteSliceContentIsInspected(t *testing.T) {
+	m := newTestMasker(t)
+	cases := []struct {
+		name  string
+		value []byte
+		want  string
+	}{
+		{name: "pair", value: []byte("password=dummy"), want: DefaultRedactionMarker},
+		{name: "token", value: []byte("auth " + textDummyGitHub), want: DefaultRedactionMarker},
+		{name: "json document", value: []byte(`{"token":"dummy"}`), want: DefaultRedactionMarker},
+		{name: "harmless text", value: []byte("hi"), want: "aGk="},
+		{name: "binary", value: []byte{0xff, 0x00, '='}, want: "/wA9"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := m.MaskAny(map[string]any{"blob": test.value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if blob := got.(map[string]any)["blob"]; blob != test.want {
+				t.Fatalf("MaskAny = %#v, want %q", blob, test.want)
+			}
+			encoded, err := m.MaskJSONValue(map[string]any{"blob": test.value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := `{"blob":"` + test.want + `"}`; string(encoded) != want {
+				t.Fatalf("MaskJSONValue = %s, want %s", encoded, want)
+			}
+		})
+	}
+
+	plain := newTestMasker(t, WithoutValueInspection())
+	got, err := plain.MaskAny(map[string]any{"blob": []byte("password=dummy")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blob := got.(map[string]any)["blob"]; blob != "cGFzc3dvcmQ9ZHVtbXk=" {
+		t.Fatalf("without inspection the slice is plain base64: %#v", blob)
+	}
+}
+
+// TestDiagnosticsRedactSecretsInKeys checks that a key carrying a secret does
+// not reach the log through the error that names its location.
+func TestDiagnosticsRedactSecretsInKeys(t *testing.T) {
+	m := newTestMasker(t)
+	for _, key := range []string{"password=dummy-secret", "Bearer " + textDummyGitHub, textDummyJWT} {
+		_, err := m.MaskAny(map[string]any{key: make(chan int)})
+		if err == nil {
+			t.Fatalf("key %q: expected an error", key)
+		}
+		message := err.Error()
+		for _, secret := range []string{"dummy-secret", textDummyGitHub, textDummyJWT} {
+			if strings.Contains(message, secret) {
+				t.Fatalf("key %q leaked into the diagnostic: %s", key, message)
+			}
+		}
+		if !strings.Contains(message, DefaultRedactionMarker) {
+			t.Fatalf("key %q: diagnostic lost its marker: %s", key, message)
+		}
+	}
+}
+
+// TestDefaultPolicyCommonSpellings covers key spellings that services use
+// for credentials besides the canonical ones.
+func TestDefaultPolicyCommonSpellings(t *testing.T) {
+	m := newTestMasker(t)
+	for _, key := range []string{"pwd", "api_token", "apiToken", "secret_key", "aws_secret_access_key", "secretAccessKey", "private_token", "PRIVATE-TOKEN", "otp", "X-Api-Token", "x-access-token"} {
+		got, err := m.MaskValue(key, "dummy-value")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != DefaultRedactionMarker {
+			t.Fatalf("key %q was not masked: %#v", key, got)
 		}
 	}
 }

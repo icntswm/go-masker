@@ -507,3 +507,64 @@ func TestEmbeddedURLsInHeadersAndQueriesAreMasked(t *testing.T) {
 		t.Fatalf("redirect_uri: %q", got)
 	}
 }
+
+// TestURLPathTokensAreMasked checks that a token written into the path, such
+// as a JWT in a reset link, does not survive, while an ordinary path does.
+func TestURLPathTokensAreMasked(t *testing.T) {
+	core, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := New(core)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jwt := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJkdW1teSJ9.dummy-signature"
+	tests := []struct{ raw, want string }{
+		{"https://example.com/v1/reset/" + jwt + "?keep=1", "https://example.com/v1/reset/%5BREDACTED%5D?keep=1"},
+		{"https://example.com/api/v1/orders/42", "https://example.com/api/v1/orders/42"},
+		{"https://example.com/a%2Fb/c", "https://example.com/a%2Fb/c"},
+	}
+	for _, test := range tests {
+		got, err := adapter.URLString(test.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != test.want {
+			t.Fatalf("URLString(%q) = %q, want %q", test.raw, got, test.want)
+		}
+		src, err := url.Parse(test.raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		masked, err := adapter.URL(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if masked.String() != test.want {
+			t.Fatalf("URL(%q) = %q, want %q", test.raw, masked.String(), test.want)
+		}
+	}
+}
+
+func TestURLPathInvalidUTF8FailsClosed(t *testing.T) {
+	core, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := New(core)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := url.Parse("https://example.com/reset/dummy%FFtoken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	masked, err := adapter.URL(src)
+	if !errors.Is(err, masker.ErrInvalidUTF8) {
+		t.Fatalf("URL error = %v, want ErrInvalidUTF8", err)
+	}
+	if strings.Contains(masked.String(), "dummy") {
+		t.Fatalf("URL = %q, want the safe URL", masked.String())
+	}
+}

@@ -356,7 +356,7 @@ func TestWriterReplacesSplitRecord(t *testing.T) {
 	if strings.Contains(buf.String(), "dummy-se") || strings.Contains(buf.String(), "cret") {
 		t.Fatalf("part of a split record reached the output: %q", buf.String())
 	}
-	want := `{"message":"[REDACTED]"}{"message":"[REDACTED]"}` + "\n"
+	want := `{"message":"[REDACTED]"}` + "\n" + `{"message":"[REDACTED]"}` + "\n"
 	if buf.String() != want {
 		t.Fatalf("output = %q, want %q", buf.String(), want)
 	}
