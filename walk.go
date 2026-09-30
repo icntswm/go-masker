@@ -143,47 +143,60 @@ func (m *Masker) maskScalarField(field Field, value any) (any, bool, error) {
 	return result, true, nil
 }
 
-func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) any {
+// walkNode is a value that passed every check and decision of walk and is
+// now dispatched by its shape. trackedStart must be released by the caller.
+type walkNode struct {
+	value        reflect.Value
+	field        Field
+	textual      bool
+	trackedStart int
+}
+
+// enter runs everything walk does before it looks at the shape of a value:
+// limits, pointer and interface unwrapping, cycle tracking, embedded JSON,
+// and the policy or tag decision. done reports that result is final; the
+// tracked entries are then already released.
+func (w *walker) enter(value reflect.Value, field Field, depth int, tag string) (node walkNode, result any, done bool) {
 	if w.stop {
-		return w.masker.cfg.markerAny
+		return walkNode{}, w.masker.cfg.markerAny, true
 	}
 	if !utf8.ValidString(field.Key) {
 		w.fail(CodeInvalidUTF8, field, depth)
-		return w.masker.cfg.markerAny
+		return walkNode{}, w.masker.cfg.markerAny, true
 	}
 	if depth > w.masker.cfg.maxDepth {
 		w.fail(CodeDepthLimit, field, depth)
-		return w.masker.cfg.markerAny
+		return walkNode{}, w.masker.cfg.markerAny, true
 	}
 	w.nodes++
 	if w.nodes > w.masker.cfg.maxNodes {
 		w.fail(CodeNodeLimit, field, depth)
-		return w.masker.cfg.markerAny
+		return walkNode{}, w.masker.cfg.markerAny, true
 	}
 	value, nilValue := unwrapInterfaces(value)
 	if nilValue || !value.IsValid() {
-		return w.nilValue(field, tag)
+		return walkNode{}, w.nilValue(field, tag), true
 	}
 
 	trackedStart := len(w.activeStack)
 	for value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			w.releaseTracked(trackedStart)
-			return w.nilValue(field, tag)
+			return walkNode{}, w.nilValue(field, tag), true
 		}
 		if !w.track(value, field, depth) {
 			w.releaseTracked(trackedStart)
-			return w.masker.cfg.markerAny
+			return walkNode{}, w.masker.cfg.markerAny, true
 		}
 		if !w.dereference(field, depth) {
 			w.releaseTracked(trackedStart)
-			return w.masker.cfg.markerAny
+			return walkNode{}, w.masker.cfg.markerAny, true
 		}
 		value = value.Elem()
 		value, nilValue = unwrapInterfaces(value)
 		if nilValue || !value.IsValid() {
 			w.releaseTracked(trackedStart)
-			return w.nilValue(field, tag)
+			return walkNode{}, w.nilValue(field, tag), true
 		}
 	}
 	if value.Type() == rawMessageType {
@@ -192,7 +205,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		w.releaseTracked(trackedStart)
 		decoded, ok := w.decodeRawMessage(value, field, depth)
 		if !ok {
-			return w.masker.cfg.markerAny
+			return walkNode{}, w.masker.cfg.markerAny, true
 		}
 		// The decoded root stands in for this node and is not counted twice.
 		// It and its members are JSON, and are decided as MaskJSON decides
@@ -202,7 +215,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		if field.Source != SourceHeader {
 			field.Source = SourceJSON
 		}
-		return w.walk(reflect.ValueOf(decoded), field, depth, tag)
+		return walkNode{}, w.walk(reflect.ValueOf(decoded), field, depth, tag), true
 	}
 	// A value that renders as text is decided as a string, but MarshalText
 	// runs only once a rule or the safe output actually needs the text, so an
@@ -214,7 +227,7 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	if !textual && (value.Kind() == reflect.Map || value.Kind() == reflect.Slice) {
 		if !w.track(value, field, depth) {
 			w.releaseTracked(trackedStart)
-			return w.masker.cfg.markerAny
+			return walkNode{}, w.masker.cfg.markerAny, true
 		}
 	}
 
@@ -224,14 +237,29 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 	if !textual && value.Kind() == reflect.String && !utf8.ValidString(value.String()) {
 		w.fail(CodeInvalidUTF8, field, depth)
 		w.releaseTracked(trackedStart)
-		return w.masker.cfg.markerAny
+		return walkNode{}, w.masker.cfg.markerAny, true
 	}
 	if handled, result := w.applyFieldDecision(value, field, tag, depth); handled {
 		w.releaseTracked(trackedStart)
+		return walkNode{}, result, true
+	}
+	return walkNode{value: value, field: field, textual: textual, trackedStart: trackedStart}, nil, false
+}
+
+func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) any {
+	node, result, done := w.enter(value, field, depth, tag)
+	if done {
 		return result
 	}
-	if textual {
-		w.releaseTracked(trackedStart)
+	result = w.dispatch(node, depth)
+	w.releaseTracked(node.trackedStart)
+	return result
+}
+
+func (w *walker) dispatch(node walkNode, depth int) any {
+	value := node.value
+	field := node.field
+	if node.textual {
 		text, ok := w.renderText(value, field, depth)
 		if !ok {
 			return w.masker.cfg.markerAny
@@ -267,7 +295,6 @@ func (w *walker) walk(value reflect.Value, field Field, depth int, tag string) a
 		w.fail(CodeUnsupportedType, field, depth)
 		result = w.masker.cfg.markerAny
 	}
-	w.releaseTracked(trackedStart)
 	return result
 }
 

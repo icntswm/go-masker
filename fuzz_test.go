@@ -59,6 +59,21 @@ func FuzzMaskJSON(f *testing.F) {
 		if !utf8.Valid(data) {
 			t.Fatal("invalid UTF-8 input must fail closed")
 		}
+		// The decoded document holds no named scalars, so MaskJSONValue must
+		// write exactly what encoding/json writes for MaskAny's tree.
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.UseNumber()
+		var decoded any
+		if decoder.Decode(&decoded) == nil {
+			tree, anyErr := m.MaskAny(decoded)
+			direct, directErr := m.MaskJSONValue(decoded)
+			if (anyErr == nil) != (directErr == nil) {
+				t.Fatalf("MaskAny error %v, MaskJSONValue error %v", anyErr, directErr)
+			}
+			if want, marshalErr := json.Marshal(tree); anyErr == nil && (marshalErr != nil || !bytes.Equal(direct, want)) {
+				t.Fatalf("MaskJSONValue %s, encoded MaskAny %s (%v)", direct, want, marshalErr)
+			}
+		}
 		var doc map[string]any
 		if json.Unmarshal(data, &doc) != nil {
 			return

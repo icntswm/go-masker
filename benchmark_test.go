@@ -311,6 +311,110 @@ func BenchmarkMaskAnyNestedMap(b *testing.B) {
 	validateBenchmarkValue(b, err)
 }
 
+// --- MaskJSONValue: reflection straight to masked JSON -----------------------
+
+func validateBenchmarkBytes(b *testing.B, err error) {
+	b.Helper()
+	if err != nil {
+		b.Fatal(err)
+	}
+	if len(benchmarkBytesSink) == 0 {
+		b.Fatal("empty benchmark output")
+	}
+	if !json.Valid(benchmarkBytesSink) {
+		b.Fatal("invalid JSON output")
+	}
+}
+
+func BenchmarkMaskJSONValueFlatStruct(b *testing.B) {
+	m := newBenchMasker(b)
+	value := struct {
+		Name     string
+		Attempts int
+		Active   bool
+	}{Name: "visible", Attempts: 3, Active: true}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchmarkBytesSink, err = m.MaskJSONValue(value)
+	}
+	b.StopTimer()
+	validateBenchmarkBytes(b, err)
+}
+
+func BenchmarkMaskJSONValueWideStruct(b *testing.B) {
+	m := newBenchMasker(b)
+	value := benchWideStruct{
+		A: "a", B: "b", C: "c", D: "d", E: "e", F: "f", G: "g", H: "h",
+		I: "i", J: "j", K: "k", L: "l", M: "m", N: "n", O: "o", P: "p",
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchmarkBytesSink, err = m.MaskJSONValue(value)
+	}
+	b.StopTimer()
+	validateBenchmarkBytes(b, err)
+}
+
+func BenchmarkMaskJSONValueSmallStruct(b *testing.B) {
+	m := newBenchMasker(b)
+	value := benchStruct{
+		Name:     "a@b.c",
+		Token:    "t",
+		Attempts: 3,
+		Active:   true,
+		Meta:     map[string]string{"k": "v"},
+		Nested:   &benchInner{Phone: "15551234567", Note: "n"},
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchmarkBytesSink, err = m.MaskJSONValue(value)
+	}
+	b.StopTimer()
+	validateBenchmarkBytes(b, err)
+}
+
+func BenchmarkMaskJSONValueNestedMap(b *testing.B) {
+	m := newBenchMasker(b)
+	value := nestedMap()
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchmarkBytesSink, err = m.MaskJSONValue(value)
+	}
+	b.StopTimer()
+	validateBenchmarkBytes(b, err)
+}
+
+func BenchmarkMaskAnyThenMarshalSmallStruct(b *testing.B) {
+	m := newBenchMasker(b)
+	value := benchStruct{
+		Name:     "a@b.c",
+		Token:    "t",
+		Attempts: 3,
+		Active:   true,
+		Meta:     map[string]string{"k": "v"},
+		Nested:   &benchInner{Phone: "15551234567", Note: "n"},
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		masked, maskErr := m.MaskAny(value)
+		if err = maskErr; err == nil {
+			benchmarkBytesSink, err = json.Marshal(masked)
+		}
+	}
+	b.StopTimer()
+	validateBenchmarkBytes(b, err)
+}
+
 // --- JSON -------------------------------------------------------------------
 
 const smallJSONDoc = `{"user":{"email":"alice@example.com","phone":"15551234567"},"token":"t","count":3}`

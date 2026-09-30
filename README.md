@@ -372,6 +372,16 @@ to `map[string]any`/`[]any` containers. Struct field promotion follows the
 relevant `encoding/json` rules, including same-depth tagged-field selection and
 ignored unexported embedded non-struct fields.
 
+When the masked value is going to be encoded anyway, `MaskJSONValue` returns
+the JSON directly. It gives the same bytes as `json.Marshal` of the `MaskAny`
+result, sorted keys included, at about half the cost, and on any error returns
+the marker as JSON:
+
+```go
+line, err := m.MaskJSONValue(Event{User: "alice", Password: "secret"})
+// {"Password":"[REDACTED]","user":"alice"}
+```
+
 A custom rule can join the grammar through `WithTagRule`. The name must not be
 empty, contain a comma, a space, or a quote, and built-in names and `omit`
 cannot be redefined:

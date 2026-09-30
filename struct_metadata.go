@@ -2,6 +2,8 @@ package masker
 
 import (
 	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -15,6 +17,9 @@ type structMetadata struct {
 	fields     []structFieldMetadata
 	conflicts  []structConflictMetadata
 	flatScalar bool
+	// sorted holds fields ordered by jsonName, the order encoding/json
+	// writes the keys of the map the walker returns for the struct.
+	sorted []structFieldMetadata
 }
 
 type structFieldMetadata struct {
@@ -101,6 +106,10 @@ func buildStructMetadata(typ reflect.Type, tagName string, tagRules map[string]R
 		})
 	}
 	metadata.flatScalar = isFlatScalarMetadata(typ, candidates, conflicts)
+	sorted := make([]structFieldMetadata, len(metadata.fields))
+	copy(sorted, metadata.fields)
+	slices.SortStableFunc(sorted, func(a, b structFieldMetadata) int { return strings.Compare(a.jsonName, b.jsonName) })
+	metadata.sorted = sorted
 	return metadata
 }
 

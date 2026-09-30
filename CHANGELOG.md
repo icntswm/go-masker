@@ -8,6 +8,16 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+### Added
+
+- `MaskJSONValue` masks a Go value as `MaskAny` does and returns the result
+  as JSON, written directly without the intermediate `map[string]any` tree.
+  The output is what `json.Marshal` gives for the `MaskAny` result, with
+  sorted keys; masking a struct and encoding it takes about half the time and
+  a third of the allocations. With `WithPreserveSafeTypes` a named scalar is
+  written as its underlying value, never through its `MarshalJSON` method,
+  and a NaN or infinite float fails closed.
+
 ### Changed
 
 - `slogmask` is faster: a scalar attribute and each enclosing group are
@@ -18,6 +28,10 @@ API may still change, and every such change is listed here.
 - A struct that holds nested values masks its scalar fields through the same
   compiled path as a flat struct, so a wide record with one nested struct
   takes about a third less time.
+- `MaskAny` allocates less: the redaction marker, booleans and small integers
+  are boxed once, and array indexes enter a path only when one is read. A
+  list of 10,000 records takes about a tenth less time and a third fewer
+  allocations.
 
 ## [0.5.0] - 2026-09-30
 

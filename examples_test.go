@@ -36,6 +36,19 @@ func ExampleMasker_MaskJSON() {
 	// Output: {"count":42,"email":"a***@example.com","token":"[REDACTED]"}
 }
 
+func ExampleMasker_MaskJSONValue() {
+	m, err := masker.New(masker.DefaultPolicy())
+	if err != nil {
+		panic(err)
+	}
+	out, err := m.MaskJSONValue(map[string]any{"user": "alice", "password": "s3cret", "attempts": 3})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(out))
+	// Output: {"attempts":"3","password":"[REDACTED]","user":"alice"}
+}
+
 func ExampleWithPreserveSafeTypes() {
 	m, err := masker.New(masker.DefaultPolicy(), masker.WithPreserveSafeTypes())
 	if err != nil {

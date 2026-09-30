@@ -561,6 +561,17 @@ has had the chance to discard it, so such a decision never runs it. Unsupported 
 functions, channels, complex values, unsafe pointers, and arbitrary readers
 are fail-closed.
 
+`MaskJSONValue` runs the same walker but writes JSON instead of the normalized
+tree. Steps 1–4 are one function, `walker.enter`, shared by both; only step 5
+has a JSON twin for maps, arrays, structs and scalars, which visits keys and
+fields in sorted order so the output needs no second pass. Its output must be
+byte for byte `json.Marshal` of the `MaskAny` result with named scalars
+reduced to their underlying values; a parity test over configurations,
+limits, errors and cycles, and the `FuzzMaskJSON` target, hold the two paths
+together. Because it visits sorted keys, a policy sees fields in a different
+order than under `MaskAny`, and when several errors occur the first one
+recorded may differ; the output is the marker either way.
+
 ### 8.1 Maps
 
 Maps support `map[string]T` and aliases of string. Original map keys and

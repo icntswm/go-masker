@@ -7,7 +7,7 @@
 | Hardware | Apple M3 Pro, darwin/arm64 |
 | Go | go1.23.1 (cross-version results in [Verified Go versions](#verified-go-versions)) |
 | Date | 2026-09-30 |
-| Benchmark revision | `v0.5.0`; logger adapters and nested struct after `v0.5.0` |
+| Benchmark revision | `v0.5.0`; logger adapters, `MaskAny` and `MaskJSONValue` after `v0.5.0` |
 | Verification revision | `2fe6986` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
@@ -31,11 +31,16 @@ for capacity planning.
 | `KeyPolicy`, empty key | 19.3 | 24 | 1 |
 | `MaskValue`, scalar, rule applied | 107.1 | 32 | 2 |
 | `MaskValue`, scalar, no rule | 151.0 | 40 | 2 |
-| `MaskAny`, scalar | 116.1 | 16 | 1 |
-| `MaskAny`, flat struct | 345.5 | 432 | 7 |
-| `MaskAny`, wide struct | 1,708 | 1,736 | 20 |
-| `MaskAny`, nested/tagged struct | 1,476 | 1,800 | 23 |
-| `MaskAny`, nested map | 275,196 | 161,261 | 4,120 |
+| `MaskAny`, scalar | 122.0 | 16 | 1 |
+| `MaskAny`, flat struct | 328.9 | 416 | 5 |
+| `MaskAny`, wide struct | 1,715 | 1,752 | 20 |
+| `MaskAny`, nested/tagged struct | 1,480 | 1,800 | 20 |
+| `MaskAny` + `json.Marshal`, nested/tagged struct | 2,828 | 2,602 | 42 |
+| `MaskAny`, nested map | 277,628 | 156,682 | 3,818 |
+| `MaskJSONValue`, flat struct | 350.9 | 256 | 4 |
+| `MaskJSONValue`, wide struct | 1,294 | 560 | 4 |
+| `MaskJSONValue`, nested/tagged struct | 1,402 | 1,032 | 14 |
+| `MaskJSONValue`, nested map | 260,908 | 65,637 | 2,716 |
 | `MaskJSON`, strings holding a URL and a JSON body | 2,401 | 1,569 | 35 |
 | `httpmask.Headers`, mixed set | 2,172 | 1,072 | 35 |
 | `httpmask.URL`, query | 1,404 | 848 | 25 |
@@ -43,7 +48,10 @@ for capacity planning.
 Flat and wide structs use the specialized scalar-struct path with compiled
 field metadata. A struct that also holds nested values takes the same path for
 each of its scalar fields and pays the general reflection walker only for the
-rest. A string
+rest. `MaskJSONValue` makes the same decisions but writes JSON as it goes
+instead of building `map[string]any` and `[]any` for `encoding/json` to walk
+again, so masking a struct and encoding it costs half as much as `MaskAny`
+followed by `json.Marshal`, with a third of the allocations. A string
 that no rule masks is inspected for embedded documents and secrets inside
 text, which is most of the cost of the scalar rows without a rule; the scan
 skips the inside of each word, so it stays linear and cheap on ordinary text.
