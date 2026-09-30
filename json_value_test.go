@@ -216,6 +216,7 @@ func TestMaskJSONValueMatchesMaskAny(t *testing.T) {
 				Omitted:  "omitted",
 				Alias:    "alias",
 				Full:     "full",
+				hidden:   "hidden",
 			},
 		},
 		{name: "flat struct", value: parityFlat{Name: "n", Count: 3, Ratio: 0.5, OK: true, First: "f", Second: 2}},
@@ -337,5 +338,23 @@ func TestMaskJSONValuePanickingPolicy(t *testing.T) {
 	}
 	if strings.Contains(valueErr.Error(), "unsafe") {
 		t.Fatalf("error exposed callback detail: %v", valueErr)
+	}
+}
+
+func TestMaskJSONValueMapOverNodeLimit(t *testing.T) {
+	m := newTestMasker(t, WithMaxNodes(3))
+	input := map[string]any{"a": 1, "b": 2, "c": 3}
+	_, anyErr := m.MaskAny(input)
+	value, valueErr := m.MaskJSONValue(input)
+	if !errors.Is(anyErr, ErrNodeLimit) || !errors.Is(valueErr, ErrNodeLimit) {
+		t.Fatalf("expected node limit: MaskAny %v, MaskJSONValue %v", anyErr, valueErr)
+	}
+	if string(value) != `"[REDACTED]"` {
+		t.Fatalf("unexpected fallback: %s", value)
+	}
+	// A map that fits the budget exactly is still written in full.
+	fits := map[string]any{"a": 1, "b": 2}
+	if value, err := m.MaskJSONValue(fits); err != nil || string(value) != `{"a":"1","b":"2"}` {
+		t.Fatalf("unexpected result for a map at the limit: %s, %v", value, err)
 	}
 }

@@ -11,13 +11,25 @@ import (
 )
 
 func init() {
+	// The adapters pass only a *Masker; anything else fails closed.
 	adapter.Scalar = func(core any, groups []string, key string, value slog.Value) (adapter.Action, string) {
-		return core.(*Masker).adapterScalar(groups, key, value)
+		m, ok := core.(*Masker)
+		if !ok {
+			return adapter.Fail, ""
+		}
+		return m.adapterScalar(groups, key, value)
 	}
 	adapter.Group = func(core any, groups []string) adapter.Action {
-		return core.(*Masker).adapterGroup(groups)
+		m, ok := core.(*Masker)
+		if !ok {
+			return adapter.Fail
+		}
+		return m.adapterGroup(groups)
 	}
-	adapter.PreservesTypes = func(core any) bool { return core.(*Masker).cfg.preserveSafe }
+	adapter.PreservesTypes = func(core any) bool {
+		m, ok := core.(*Masker)
+		return ok && m.cfg.preserveSafe
+	}
 }
 
 // adapterPath builds the field path of an attribute inside groups, the way
@@ -84,8 +96,9 @@ func (m *Masker) adapterScalar(groups []string, key string, value slog.Value) (a
 	default:
 		var buf [64]byte
 		b := adapterAppend(buf[:0], value)
-		if !(m.cfg.embedded && embeddedCandidateBytes(b) ||
-			m.cfg.textDetectors && detect.Candidate(b, m.cfg.detectSet)) {
+		candidate := m.cfg.embedded && embeddedCandidateBytes(b) ||
+			m.cfg.textDetectors && detect.Candidate(b, m.cfg.detectSet)
+		if !candidate {
 			return adapter.Keep, ""
 		}
 		return m.adapterInspect(string(b), field)

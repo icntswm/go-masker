@@ -77,6 +77,7 @@ go-masker/
 ├── json_encode.go
 ├── json_lex.go
 ├── json_stream.go
+├── json_value.go
 ├── json_walk.go
 ├── masker.go
 ├── options.go
@@ -97,9 +98,6 @@ go-masker/
 │   ├── doc.go
 │   ├── replace.go
 │   └── *_test.go
-├── internal/jsonline/       # line-masking engine of both writers
-├── internal/urlquery/       # query parser shared by httpmask and embedded.go
-├── internal/detect/         # secret detectors for free text
 ├── zerologmask/
 │   ├── doc.go
 │   ├── writer.go
@@ -111,16 +109,11 @@ go-masker/
 ├── testdata/
 │   └── security_decisions/
 ├── internal/
-│   └── outputdigest/
-├── benchmark_matrix_test.go
-├── benchmark_test.go
-├── examples_test.go
-├── fuzz_test.go
-├── goldens_test.go
-├── json_encode_test.go
-├── json_scan_test.go
-├── json_walk_test.go
-└── masker_test.go
+│   ├── detect/               # secret detectors for free text
+│   ├── jsonline/             # line-masking engine of both writers
+│   ├── outputdigest/         # cross-version output digest
+│   └── urlquery/             # query parser shared by httpmask and embedded.go
+└── *_test.go                 # tests, examples, fuzz targets, benchmarks
 ```
 
 The core remains a single root package. Splitting the walker into internal
@@ -150,8 +143,7 @@ diagnostics masked whatever the policy says about the suffixed key.
 
 ## 4. Core public API
 
-The following signatures define the public contract implemented by the current
-release candidate.
+The following signatures define the public contract of the current release.
 
 ```go
 const DefaultRedactionMarker = "[REDACTED]"
@@ -171,6 +163,7 @@ func (m *Masker) MaskField(field Field, value any) (any, error)
 func (m *Masker) MaskAny(value any) (any, error)
 func (m *Masker) MaskJSON(src []byte) ([]byte, error)
 func (m *Masker) MaskJSONReader(src io.Reader) ([]byte, error)
+func (m *Masker) MaskJSONValue(value any) ([]byte, error)
 
 func WithPreserveSafeTypes() Option
 func WithRedaction(marker string) Option
@@ -179,6 +172,11 @@ func WithMaxNodes(nodes int) Option
 func WithMaxInputBytes(bytes int64) Option
 func WithStructTag(name string) Option
 func WithTagRule(name string, rule Rule) Option
+func WithoutEmbeddedDocuments() Option
+func WithoutTextDetectors() Option
+func WithoutValueInspection() Option
+func WithCardNumberDetection() Option
+func WithAWSKeyIDDetection() Option
 ```
 
 `MaskValue` is a convenience wrapper over `MaskField` and uses
@@ -256,6 +254,7 @@ const (
     SourceURLQuery
     SourceURLUserInfo
     SourceURLFragment
+    SourceText
 )
 
 type ValueKind uint8
@@ -568,7 +567,9 @@ fields in sorted order so the output needs no second pass. Its output must be
 byte for byte `json.Marshal` of the `MaskAny` result with named scalars
 reduced to their underlying values; a parity test over configurations,
 limits, errors and cycles, and the `FuzzMaskJSON` target, hold the two paths
-together. Because it visits sorted keys, a policy sees fields in a different
+together. A map longer than the remaining node budget fails with
+`ErrNodeLimit` before its entries are collected and sorted, since every child
+would charge a node. Because it visits sorted keys, a policy sees fields in a different
 order than under `MaskAny`, and when several errors occur the first one
 recorded may differ; the output is the marker either way.
 
@@ -674,8 +675,8 @@ the call with `ErrInvalidJSON` rather than let a stalled reader spin forever.
 
 There is intentionally no streaming `io.Writer` API for a single document:
 once a writer has received a prefix, a later parse error cannot retract a
-potentially unsafe operation. The logger writers do not break this rule. It masks
-whole lines, each a complete document, and writes nothing of a line until the
+potentially unsafe operation. The logger writers do not break this rule. Each
+masks whole lines, each a complete document, and writes nothing of a line until the
 line is masked; a record split across two `Write` calls is replaced by the
 fallback line rather than buffered.
 
@@ -949,9 +950,11 @@ fall back to the original value when masking returns an error.
   grapheme-cluster preservation.
 - JSON uses the streaming walker, but `MaskJSONReader` still reads the
   complete input into memory before processing.
-- Safe booleans are converted to strings by default in every pipeline;
-  `WithPreserveSafeTypes` is required to keep them typed. Only non-sensitive
-  `json.Number` values are always retained as numbers.
+- Safe booleans are converted to strings by default in `MaskAny`,
+  `MaskJSONValue` and `MaskJSON`; `WithPreserveSafeTypes` is required to keep
+  them typed. Only non-sensitive `json.Number` values are always retained as
+  numbers. `slogmask` keeps the type of a safe scalar attribute without the
+  option.
 - Phone and card values with four or fewer digits, or arbitrary free text
   around the digits, use full redaction; ordinary phone/card separators are
   retained only when there are more than four digits.

@@ -77,6 +77,8 @@ func (r replacer) replace(groups []string, attr slog.Attr) (result slog.Attr) {
 			return slog.Attr{}
 		case adapter.Fail:
 			return r.marker(attr.Key)
+		case adapter.Keep, adapter.Replace:
+			// The group is safe: its member is decided on its own below.
 		}
 	}
 	switch value.Kind() {

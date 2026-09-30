@@ -49,6 +49,11 @@ func (m *Masker) MaskJSONValue(value any) (result []byte, err error) {
 // one huge document does not pin its memory for every later small one.
 const maxPooledJSONBuffer = 4 << 20
 
+// maxPooledScratch bounds each map-key scratch slice kept in the pool, for
+// the same reason: a map with a raised WithMaxNodes must not leave its
+// entries' backing array to every later small call.
+const maxPooledScratch = 1 << 14
+
 var jsonValueEmitters = sync.Pool{New: func() any { return new(jsonValueEmitter) }}
 
 func getJSONValueEmitter(w *walker) *jsonValueEmitter {
@@ -67,9 +72,17 @@ func getJSONValueEmitter(w *walker) *jsonValueEmitter {
 func putJSONValueEmitter(e *jsonValueEmitter) {
 	e.w = nil
 	for i := range e.entries {
+		if cap(e.entries[i]) > maxPooledScratch {
+			e.entries[i] = nil
+			continue
+		}
 		clear(e.entries[i][:cap(e.entries[i])])
 	}
 	for i := range e.enc.keys {
+		if cap(e.enc.keys[i]) > maxPooledScratch {
+			e.enc.keys[i] = nil
+			continue
+		}
 		clear(e.enc.keys[i][:cap(e.enc.keys[i])])
 	}
 	e.enc.deepKeys = nil
@@ -186,6 +199,14 @@ func (e *jsonValueEmitter) appendResult(result any, field Field, depth int) (omi
 func (e *jsonValueEmitter) emitMap(value reflect.Value, field Field, depth int) (omitted bool) {
 	if value.Type().Key().Kind() != reflect.String {
 		e.w.fail(CodeUnsupportedKey, field, depth)
+		e.enc.buf = appendJSONString(e.enc.buf, e.w.masker.cfg.marker)
+		return false
+	}
+	// Every child costs a node before any decision, so a map longer than the
+	// remaining budget must fail: it fails here, before its entries are
+	// copied and sorted, as mapValue stops at the first child over the limit.
+	if value.Len() > e.w.masker.cfg.maxNodes-e.w.nodes {
+		e.w.fail(CodeNodeLimit, field, depth)
 		e.enc.buf = appendJSONString(e.enc.buf, e.w.masker.cfg.marker)
 		return false
 	}

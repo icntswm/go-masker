@@ -7,8 +7,8 @@
 | Hardware | Apple M3 Pro, darwin/arm64 |
 | Go | go1.23.1 (cross-version results in [Verified Go versions](#verified-go-versions)) |
 | Date | 2026-09-30 |
-| Benchmark revision | `v0.5.0`; logger adapters, `MaskAny` and `MaskJSONValue` after `v0.5.0` |
-| Verification revision | `2fe6986` |
+| Benchmark revision | `v0.6.0`; rows for code unchanged since `v0.5.0` were measured there |
+| Verification revision | `v0.6.0` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |
 
@@ -137,8 +137,8 @@ of magnitude, from a single field to 10,000 records.
 
 ## Verified Go versions
 
-All checks below were run locally at `2fe6986`, where coverage is 84.9 % for
-the root package, 90.7 % for `httpmask`, and 88.6 % for `slogmask`. Timing
+All checks below were run locally at `v0.6.0`, where coverage is 84.1 % for
+the root package, 88.5 % for `httpmask`, and 90.2 % for `slogmask`. Timing
 numbers above were not re-measured for this run.
 
 | Go | build / vet / gofmt | `go test` | `-race` | `bench-matrix` | fuzz |

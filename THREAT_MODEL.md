@@ -44,7 +44,8 @@ slices count toward the depth limit. Only receivers without pointers or maps
 are copied; any other marshaler is walked like an ordinary value. `MarshalText` never sees
 the input's own storage, so a method that mutates its receiver cannot change
 the input. Successful inputs still produce complete normalized copies; resource failures return only
-the safe root fallback.
+the safe root fallback. `MaskJSONValue` rejects a map longer than the remaining
+node budget before it copies and sorts the entries.
 
 Object-member collection uses bounded scratch storage and map-assisted duplicate
 lookup for wide objects. Members are sorted before encoding, so callers should
@@ -56,7 +57,10 @@ garbage collection: at most four buffers of up to 16 MiB each, shared by every
 `Masker` in the process and held until it exits. One large document therefore
 raises the process floor by up to 64 MiB. A pooled buffer is cleared of the
 keys it held before it is reused; its value bytes are overwritten in place and
-are unreachable through the API.
+are unreachable through the API. `MaskJSONValue` keeps its output buffer and
+key scratch in a `sync.Pool`, cleared of caller data on return; an output
+buffer over 4 MiB or a key slice over 16,384 entries is dropped instead of
+pooled.
 Cycle detection tracks only the active recursion path, so shared DAG nodes are
 allowed. Unsupported map key types and reflection values are rejected.
 

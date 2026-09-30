@@ -176,8 +176,12 @@ func TestReplaceAttrGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != string(want) {
-		gotLines, wantLines := strings.Split(got, "\n"), strings.Split(string(want), "\n")
+	// Go 1.27 writes the replacement for invalid UTF-8 as the character
+	// itself where earlier releases escape it; the text is the same, so only
+	// that spelling is folded before the byte comparison.
+	got, wantText := foldReplacementEscape(got), foldReplacementEscape(string(want))
+	if got != wantText {
+		gotLines, wantLines := strings.Split(got, "\n"), strings.Split(wantText, "\n")
 		for i := 0; i < len(gotLines) && i < len(wantLines); i++ {
 			if gotLines[i] != wantLines[i] {
 				t.Fatalf("golden mismatch at line %d:\n got: %s\nwant: %s", i+1, gotLines[i], wantLines[i])
@@ -185,4 +189,8 @@ func TestReplaceAttrGolden(t *testing.T) {
 		}
 		t.Fatalf("golden length differs: got %d lines, want %d", len(gotLines), len(wantLines))
 	}
+}
+
+func foldReplacementEscape(s string) string {
+	return strings.ReplaceAll(s, `\ufffd`, "\ufffd")
 }
