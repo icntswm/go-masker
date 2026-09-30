@@ -7,7 +7,7 @@
 | Hardware | Apple M3 Pro, darwin/arm64 |
 | Go | go1.23.1 (cross-version results in [Verified Go versions](#verified-go-versions)) |
 | Date | 2026-09-30 |
-| Benchmark revision | unreleased for the `MaskJSONValue` and `httpmask` rows and the matrix; other rows `v0.6.0`, re-checked against it with no significant change |
+| Benchmark revision | `v0.6.1` for the `MaskJSONValue` and `httpmask` rows and the matrix; other rows `v0.6.0`, re-checked at `v0.6.1` with no significant change |
 | Verification revision | `v0.6.0` |
 | Core benchmarks | `make bench`, median of 5 runs |
 | Matrix | `make bench-matrix MATRIX_FLAGS="-benchtime=20ms -count=3"`, median of 3 runs |

@@ -8,6 +8,8 @@ API may still change, and every such change is listed here.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-30
+
 ### Added
 
 - The default policy also recognizes `pwd`, `api_token`, `secret_key`,
@@ -362,7 +364,8 @@ First tagged release.
 - Settled the public module path `github.com/icntswm/go-masker` and added
   release, contribution and agent-facing documentation.
 
-[Unreleased]: https://github.com/icntswm/go-masker/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/icntswm/go-masker/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/icntswm/go-masker/releases/tag/v0.6.1
 [0.6.0]: https://github.com/icntswm/go-masker/releases/tag/v0.6.0
 [0.5.0]: https://github.com/icntswm/go-masker/releases/tag/v0.5.0
 [0.4.0]: https://github.com/icntswm/go-masker/releases/tag/v0.4.0
